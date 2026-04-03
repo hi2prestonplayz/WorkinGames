@@ -1,6 +1,8 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
+const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
+const BUILD_VERSION = "20260402m";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -150,6 +152,8 @@ const els = {
   shareLink: document.querySelector("#shareLink"),
   copyLinkButton: document.querySelector("#copyLinkButton"),
   shareNote: document.querySelector("#shareNote"),
+  buildVersion: document.querySelector("#buildVersion"),
+  buildUpdatedAt: document.querySelector("#buildUpdatedAt"),
 };
 
 const highScores = loadHighScores();
@@ -199,6 +203,7 @@ boot();
 
 function boot() {
   updateSettingsUi();
+  updateBuildInfo();
   updateShareUi();
   renderGameList();
   bindEvents();
@@ -493,6 +498,19 @@ function updateSettingsUi() {
   }
   if (els.difficultyHint) {
     els.difficultyHint.textContent = `${preset.label}: ${preset.blurb}`;
+  }
+}
+
+function updateBuildInfo() {
+  if (els.buildVersion) {
+    els.buildVersion.textContent = BUILD_VERSION;
+  }
+  if (els.buildUpdatedAt) {
+    const lastModified = document.lastModified ? new Date(document.lastModified) : null;
+    els.buildUpdatedAt.textContent =
+      lastModified && !Number.isNaN(lastModified.getTime())
+        ? lastModified.toLocaleString()
+        : "Unknown";
   }
 }
 
@@ -940,6 +958,7 @@ function createPongGame() {
   let ball;
   let playerScore = 0;
   let aiScore = 0;
+  let aiTargetY = 220;
 
   function resetState() {
     player = { x: 26, y: 170, width: 14, height: 100 };
@@ -947,6 +966,7 @@ function createPongGame() {
     ball = { x: 380, y: 220, vx: 5, vy: 3.2, r: 9 };
     playerScore = 0;
     aiScore = 0;
+    aiTargetY = 220;
     setScore(0);
     updateHud();
     draw();
@@ -965,6 +985,7 @@ function createPongGame() {
       vy: (Math.random() * 4) - 2,
       r: 9,
     };
+    aiTargetY = 220 + (Math.random() * 90 - 45);
   }
 
   function update() {
@@ -972,7 +993,11 @@ function createPongGame() {
     player.y += downPressed ? 6 : 0;
     player.y = clamp(player.y, 0, 440 - player.height);
 
-    ai.y += ball.y > ai.y + ai.height / 2 ? 4.2 : -4.2;
+    if (Math.random() < 0.045) {
+      aiTargetY = ball.y + (Math.random() * 90 - 45);
+    }
+    const aiSpeed = ball.x > 420 ? 3.15 : 2.15;
+    ai.y += aiTargetY > ai.y + ai.height / 2 ? aiSpeed : -aiSpeed;
     ai.y = clamp(ai.y, 0, 440 - ai.height);
 
     ball.x += ball.vx;
@@ -2834,6 +2859,10 @@ function createTypingRushGame() {
       "Dodge and chase coins.",
       "Smooth controls feel better.",
       "Quick games still shine.",
+      "Tiny taps can beat giants.",
+      "A calm run still feels good.",
+      "Keep typing and stay loose.",
+      "Small wins build big streaks.",
     ],
     normal: [
       "Fast fingers win browser races.",
@@ -2841,12 +2870,20 @@ function createTypingRushGame() {
       "Portal games feel better with smooth controls.",
       "Classic arcade energy never really gets old.",
       "Tiny games can still make a huge playground.",
+      "Every clean input makes a fast arcade game feel twice as good.",
+      "Good browser games stay simple but keep giving you reasons to replay.",
+      "Typing under pressure feels easier when the rhythm starts to click.",
+      "A small arcade can still feel huge when every game has its own flavor.",
     ],
     hard: [
       "Subway runners get chaotic when every lane demands a different move.",
       "The best arcade sessions balance quick reflexes with smart decision making.",
       "Clean movement and sharp timing turn simple browser games into score marathons.",
       "High speed obstacle patterns get mean fast when your mistakes start to stack up.",
+      "A great arcade update adds variety without losing the fast pick up and play feeling that made the games fun.",
+      "When a typing challenge mixes pacing, precision, and longer phrases, every error suddenly matters much more.",
+      "Sharp controls, readable feedback, and fair difficulty tuning keep even silly browser games satisfying for longer sessions.",
+      "Simple mechanics become far more replayable once animations, stronger pacing, and a better upgrade curve all start working together.",
     ],
   };
 
@@ -2979,6 +3016,7 @@ function createSpaceBlasterGame() {
   let intermissionSecondsLeft = 0;
   let intermissionResumeCurrent = false;
   let intermissionTitle = "Upgrade Break";
+  let lastUpgradePauseAt = -SPACE_UPGRADE_BREAK_COOLDOWN_MS;
 
   const upgradeCaps = {
     fire: 5,
@@ -3101,6 +3139,7 @@ function createSpaceBlasterGame() {
 
   function beginUpgradePause(nextWave, options = {}) {
     const { resumeCurrent = false, seconds = 6, title = "Upgrade Break" } = options;
+    lastUpgradePauseAt = performance.now();
     intermissionNextWave = nextWave;
     intermissionResumeCurrent = resumeCurrent;
     intermissionTitle = title;
@@ -3143,6 +3182,7 @@ function createSpaceBlasterGame() {
     intermissionSecondsLeft = 0;
     intermissionResumeCurrent = false;
     intermissionTitle = "Upgrade Break";
+    lastUpgradePauseAt = -SPACE_UPGRADE_BREAK_COOLDOWN_MS;
     startWave(1, false);
     ammo = getUpgradeState().maxAmmo;
     setScore(0);
@@ -3465,7 +3505,12 @@ function createSpaceBlasterGame() {
           credits += upgradeState.creditGain;
           updateHud();
           renderUpgrades();
-          if (!midWaveBreakTaken && waveCleared >= Math.ceil(waveTarget / 2) && waveCleared < waveTarget) {
+          if (
+            !midWaveBreakTaken &&
+            now - lastUpgradePauseAt >= SPACE_UPGRADE_BREAK_COOLDOWN_MS &&
+            waveCleared >= Math.ceil(waveTarget / 2) &&
+            waveCleared < waveTarget
+          ) {
             midWaveBreakTaken = true;
             credits += 2 + Math.floor((wave - 1) / 3);
             updateHud();
@@ -3514,11 +3559,17 @@ function createSpaceBlasterGame() {
       }
     }
 
+    const upgradePauseReady = now - lastUpgradePauseAt >= SPACE_UPGRADE_BREAK_COOLDOWN_MS;
+
     if (running && waveSpawned >= waveTarget && meteors.length === 0 && waveCooldown === 0) {
       credits += waveState.reward;
       updateHud();
       renderUpgrades();
-      beginUpgradePause(wave + 1, { seconds: 8, title: "Upgrade Break" });
+      if (upgradePauseReady) {
+        beginUpgradePause(wave + 1, { seconds: 8, title: "Upgrade Break" });
+      } else {
+        startWave(wave + 1);
+      }
     }
   }
 
@@ -4854,6 +4905,9 @@ function createRpsRushGame() {
   let streak = 0;
   let lastPlayerMove = null;
   let lastCpuMove = null;
+  let selectedMove = null;
+  let revealTimer = null;
+  let revealActive = false;
   const picks = ["rock", "paper", "scissors"];
   const labels = {
     rock: "Rock",
@@ -4882,20 +4936,40 @@ function createRpsRushGame() {
     wrapper.querySelector('[data-meta="record"]').textContent = `W ${wins} / L ${losses}`;
     wrapper.querySelector('[data-meta="rounds"]').textContent = `Rounds ${rounds}`;
     wrapper.querySelector(".rps-result").textContent = message;
+    wrapper.querySelector(".rps-result").classList.toggle("reveal", revealActive);
     wrapper.querySelector('[data-side="player"]').innerHTML = `
-      <span class="rps-throw-icon">${lastPlayerMove ? icons[lastPlayerMove] : "?"}</span>
-      <span class="rps-throw-label">You: ${lastPlayerMove ? labels[lastPlayerMove] : "Waiting"}</span>
+      <span class="rps-throw-icon ${revealActive && lastPlayerMove ? "rps-icon-pop" : ""}">${lastPlayerMove ? icons[lastPlayerMove] : selectedMove ? icons[selectedMove] : "?"}</span>
+      <span class="rps-throw-label">You: ${lastPlayerMove ? labels[lastPlayerMove] : selectedMove ? labels[selectedMove] : "Waiting"}</span>
     `;
     wrapper.querySelector('[data-side="cpu"]').innerHTML = `
-      <span class="rps-throw-icon">${lastCpuMove ? icons[lastCpuMove] : "?"}</span>
-      <span class="rps-throw-label">CPU: ${lastCpuMove ? labels[lastCpuMove] : "Waiting"}</span>
+      <span class="rps-throw-icon ${revealActive && lastCpuMove ? "rps-icon-pop" : ""}">${lastCpuMove ? icons[lastCpuMove] : revealActive ? "?" : "?"}</span>
+      <span class="rps-throw-label">CPU: ${lastCpuMove ? labels[lastCpuMove] : revealActive ? "Thinking" : "Waiting"}</span>
     `;
+    wrapper.querySelectorAll("[data-move]").forEach((button) => {
+      button.classList.toggle("selected", button.dataset.move === selectedMove);
+    });
+    const lockButton = wrapper.querySelector('[data-action="lock"]');
+    if (lockButton) {
+      lockButton.disabled = !selectedMove || revealActive;
+    }
     refreshLevel();
   }
 
-  function play(move) {
+  function chooseMove(move) {
+    if (revealActive) return;
+    selectedMove = move;
+    lastPlayerMove = null;
+    lastCpuMove = null;
+    renderBoard(`Selected ${labels[move]}. Lock it in when ready.`);
+    setStatus("Choice ready");
+  }
+
+  function playLockedMove() {
+    if (!selectedMove || revealActive) return;
+    const move = selectedMove;
     const cpu = picks[Math.floor(Math.random() * picks.length)];
     const outcome = resultFor(move, cpu);
+    revealActive = true;
     lastPlayerMove = move;
     lastCpuMove = cpu;
     rounds += 1;
@@ -4915,6 +4989,13 @@ function createRpsRushGame() {
     }
 
     renderBoard(`You chose ${labels[move]}, CPU chose ${labels[cpu]}.`);
+    if (revealTimer) clearTimeout(revealTimer);
+    revealTimer = window.setTimeout(() => {
+      revealActive = false;
+      selectedMove = null;
+      renderBoard("Pick a move to start.");
+      revealTimer = null;
+    }, 900);
   }
 
   function resetState() {
@@ -4924,6 +5005,10 @@ function createRpsRushGame() {
     streak = 0;
     lastPlayerMove = null;
     lastCpuMove = null;
+    selectedMove = null;
+    revealActive = false;
+    if (revealTimer) clearTimeout(revealTimer);
+    revealTimer = null;
     setScore(0);
     renderBoard();
     setStatus("Choose rock, paper, or scissors");
@@ -4958,13 +5043,15 @@ function createRpsRushGame() {
             <button class="rps-button" data-move="paper">Paper</button>
             <button class="rps-button" data-move="scissors">Scissors</button>
           </div>
+          <button class="primary-button" data-action="lock">Lock It In</button>
           <div class="rps-result"></div>
         </div>
       `);
       stage.appendChild(wrapper);
       wrapper.querySelectorAll("[data-move]").forEach((button) => {
-        button.addEventListener("click", () => play(button.dataset.move));
+        button.addEventListener("click", () => chooseMove(button.dataset.move));
       });
+      wrapper.querySelector('[data-action="lock"]').addEventListener("click", playLockedMove);
       resetState();
     },
     start() {
@@ -4973,7 +5060,10 @@ function createRpsRushGame() {
     reset() {
       resetState();
     },
-    destroy() {},
+    destroy() {
+      if (revealTimer) clearTimeout(revealTimer);
+      revealTimer = null;
+    },
   };
 }
 

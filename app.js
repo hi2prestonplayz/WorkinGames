@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260403b";
+const BUILD_VERSION = "20260403c";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -127,7 +127,7 @@ const DIFFICULTY_PRESETS = {
 };
 
 const GAME_CATEGORIES = [
-  { label: "Action", ids: ["runner", "space", "dodge", "snout", "maze", "pong", "flappy"] },
+  { label: "Action", ids: ["runner", "space", "tower", "dodge", "snout", "maze", "pong", "flappy"] },
   { label: "Arcade", ids: ["snake", "breakout", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble"] },
   { label: "Puzzle", ids: ["memory", "merge", "vault", "flood", "lights", "crates", "mines", "hangman", "scramble"] },
 ];
@@ -180,6 +180,7 @@ const games = {
   pong: createPongGame(),
   dodge: createDodgeDriftGame(),
   space: createSpaceBlasterGame(),
+  tower: createTowerTacticsGame(),
   stacker: createStackerGame(),
   vault: createNumberVaultGame(),
   flood: createColorFloodGame(),
@@ -6788,6 +6789,437 @@ function createWordScrambleGame() {
       loadStage(1);
     },
     destroy() {},
+  };
+}
+
+function createTowerTacticsGame() {
+  let wrapper;
+  let shell;
+  let ctx;
+  let animationId = null;
+  let running = false;
+  let towers = [];
+  let enemies = [];
+  let selectedTowerType = "pea";
+  let lives = 10;
+  let cash = 16;
+  let wave = 1;
+  let waveTotal = 0;
+  let spawnedThisWave = 0;
+  let spawnTimer = 0;
+  let preWaveCountdown = 0;
+  let buildingPads = [];
+
+  const path = [
+    { x: 0, y: 110 },
+    { x: 180, y: 110 },
+    { x: 180, y: 260 },
+    { x: 430, y: 260 },
+    { x: 430, y: 150 },
+    { x: 760, y: 150 },
+  ];
+
+  function getTowerCatalog() {
+    return {
+      pea: { label: "Pea Tower", cost: 7, range: 110, reload: 32, damage: 1, color: "#46b1ff" },
+      frost: { label: "Frost Tower", cost: 10, range: 95, reload: 42, damage: 1, slow: 0.55, slowTicks: 55, color: "#8f66ff" },
+    };
+  }
+
+  function getWaveConfig(level) {
+    const mode = getDifficultyMode();
+    const baseCount = mode === "easy" ? 7 : mode === "hard" ? 10 : 8;
+    const spawnGap = mode === "easy" ? 42 : mode === "hard" ? 28 : 34;
+    const speedBase = mode === "easy" ? 1.05 : mode === "hard" ? 1.45 : 1.22;
+    return {
+      count: baseCount + (level - 1) * 2,
+      spawnGap: Math.max(14, spawnGap - Math.floor((level - 1) / 2)),
+      speed: speedBase + (level - 1) * 0.09,
+      hp: 2 + Math.floor((level - 1) / 2),
+      reward: 2 + Math.floor((level - 1) / 3),
+    };
+  }
+
+  function buildPads() {
+    buildingPads = [
+      { x: 110, y: 55, towerId: null },
+      { x: 280, y: 185, towerId: null },
+      { x: 330, y: 330, towerId: null },
+      { x: 520, y: 320, towerId: null },
+      { x: 585, y: 85, towerId: null },
+      { x: 680, y: 255, towerId: null },
+    ];
+  }
+
+  function updateHud() {
+    shell.hud.lives.textContent = `Lives ${lives}`;
+    shell.hud.cash.textContent = `Cash ${cash}`;
+    shell.hud.wave.textContent = `Wave ${wave}`;
+    shell.hud.towers.textContent = `Towers ${towers.length}`;
+    refreshLevel();
+  }
+
+  function renderControls() {
+    if (!wrapper) return;
+    const catalog = getTowerCatalog();
+    wrapper.querySelector(".action-button-grid").innerHTML = `
+      <button class="mini-button ${selectedTowerType === "pea" ? "selected-build" : ""}" data-build="pea">${catalog.pea.label} ${catalog.pea.cost}</button>
+      <button class="mini-button ${selectedTowerType === "frost" ? "selected-build" : ""}" data-build="frost">${catalog.frost.label} ${catalog.frost.cost}</button>
+    `;
+    wrapper.querySelectorAll("[data-build]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedTowerType = button.dataset.build;
+        renderControls();
+        setStatus(`${getTowerCatalog()[selectedTowerType].label} selected`);
+      });
+    });
+  }
+
+  function setEnemyPosition(enemy) {
+    const start = path[enemy.pathIndex];
+    const end = path[enemy.pathIndex + 1];
+    if (!end) {
+      enemy.x = start.x;
+      enemy.y = start.y;
+      return;
+    }
+    enemy.x = start.x + (end.x - start.x) * enemy.segmentProgress;
+    enemy.y = start.y + (end.y - start.y) * enemy.segmentProgress;
+  }
+
+  function spawnEnemy() {
+    const config = getWaveConfig(wave);
+    const enemy = {
+      pathIndex: 0,
+      segmentProgress: 0,
+      x: path[0].x,
+      y: path[0].y,
+      baseSpeed: config.speed + Math.random() * 0.12,
+      hp: config.hp,
+      maxHp: config.hp,
+      reward: config.reward,
+      slowFactor: 1,
+      slowTicks: 0,
+    };
+    setEnemyPosition(enemy);
+    enemies.push(enemy);
+  }
+
+  function resetState() {
+    towers = [];
+    enemies = [];
+    lives = 10;
+    cash = 16;
+    wave = 1;
+    waveTotal = getWaveConfig(1).count;
+    spawnedThisWave = 0;
+    spawnTimer = 0;
+    preWaveCountdown = 90;
+    selectedTowerType = "pea";
+    running = false;
+    buildPads();
+    setScore(0);
+    updateHud();
+    renderControls();
+    draw();
+  }
+
+  function placeTower(index) {
+    const pad = buildingPads[index];
+    if (!pad || pad.towerId != null) return;
+    const towerType = getTowerCatalog()[selectedTowerType];
+    if (cash < towerType.cost) {
+      setStatus(`Need ${towerType.cost} cash`);
+      return;
+    }
+    cash -= towerType.cost;
+    const tower = {
+      id: `tower-${Date.now()}-${index}`,
+      type: selectedTowerType,
+      x: pad.x,
+      y: pad.y,
+      cooldown: 0,
+    };
+    towers.push(tower);
+    pad.towerId = tower.id;
+    updateHud();
+    renderControls();
+    setStatus(`${towerType.label} built`);
+  }
+
+  function moveEnemies() {
+    const survivors = [];
+    enemies.forEach((enemy) => {
+      if (enemy.slowTicks > 0) {
+        enemy.slowTicks -= 1;
+      } else {
+        enemy.slowFactor = 1;
+      }
+      const start = path[enemy.pathIndex];
+      const end = path[enemy.pathIndex + 1];
+      if (!end) {
+        lives -= 1;
+        return;
+      }
+      const distance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+      enemy.segmentProgress += (enemy.baseSpeed * enemy.slowFactor) / distance;
+      while (enemy.segmentProgress >= 1 && enemy.pathIndex < path.length - 1) {
+        enemy.segmentProgress -= 1;
+        enemy.pathIndex += 1;
+      }
+      if (enemy.pathIndex >= path.length - 1) {
+        lives -= 1;
+        return;
+      }
+      setEnemyPosition(enemy);
+      survivors.push(enemy);
+    });
+    enemies = survivors;
+    if (lives <= 0) {
+      running = false;
+      setStatus(`Base overrun - wave ${wave}`);
+      scheduleAutoReset();
+    }
+  }
+
+  function updateTowers() {
+    const catalog = getTowerCatalog();
+    towers.forEach((tower) => {
+      tower.cooldown = Math.max(0, tower.cooldown - 1);
+      if (tower.cooldown > 0) return;
+      const stats = catalog[tower.type];
+      const target = enemies.find((enemy) => Math.hypot(enemy.x - tower.x, enemy.y - tower.y) <= stats.range);
+      if (!target) return;
+      target.hp -= stats.damage;
+      if (stats.slow) {
+        target.slowFactor = stats.slow;
+        target.slowTicks = stats.slowTicks;
+      }
+      tower.cooldown = stats.reload;
+      if (target.hp <= 0) {
+        enemies = enemies.filter((enemy) => enemy !== target);
+        cash += target.reward;
+        setScore(appState.score + 8 + wave);
+        updateHud();
+        renderControls();
+      }
+    });
+  }
+
+  function updateWaveFlow() {
+    if (preWaveCountdown > 0) {
+      preWaveCountdown -= 1;
+      if (preWaveCountdown === 0) {
+        setStatus(`Wave ${wave} started`);
+      }
+      return;
+    }
+    const config = getWaveConfig(wave);
+    waveTotal = config.count;
+    if (spawnedThisWave < waveTotal) {
+      spawnTimer += 1;
+      if (spawnTimer >= config.spawnGap) {
+        spawnTimer = 0;
+        spawnedThisWave += 1;
+        spawnEnemy();
+      }
+      return;
+    }
+    if (enemies.length === 0) {
+      cash += 4 + Math.floor(wave / 2);
+      wave += 1;
+      spawnedThisWave = 0;
+      spawnTimer = 0;
+      preWaveCountdown = 75;
+      updateHud();
+      renderControls();
+      setStatus(`Build up for wave ${wave}`);
+    }
+  }
+
+  function update() {
+    if (!running) return;
+    updateWaveFlow();
+    moveEnemies();
+    updateTowers();
+    updateHud();
+  }
+
+  function drawPath() {
+    ctx.strokeStyle = "rgba(255, 209, 102, 0.9)";
+    ctx.lineWidth = 28;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let index = 1; index < path.length; index += 1) {
+      ctx.lineTo(path[index].x, path[index].y);
+    }
+    ctx.stroke();
+  }
+
+  function drawPads() {
+    buildingPads.forEach((pad, index) => {
+      ctx.fillStyle = pad.towerId ? "rgba(30, 185, 128, 0.22)" : "rgba(255,255,255,0.08)";
+      ctx.strokeStyle = selectedTowerType && !pad.towerId ? "rgba(255, 138, 61, 0.5)" : "rgba(255,255,255,0.14)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pad.x, pad.y, 24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (!pad.towerId) {
+        ctx.fillStyle = "rgba(255,255,255,0.78)";
+        ctx.font = "700 14px Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.fillText(String(index + 1), pad.x, pad.y + 5);
+      }
+    });
+  }
+
+  function drawTowers() {
+    const catalog = getTowerCatalog();
+    towers.forEach((tower) => {
+      const stats = catalog[tower.type];
+      ctx.fillStyle = stats.color;
+      ctx.beginPath();
+      ctx.arc(tower.x, tower.y, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#08111f";
+      ctx.fillRect(tower.x - 4, tower.y - 18, 8, 18);
+    });
+  }
+
+  function drawEnemies() {
+    enemies.forEach((enemy) => {
+      ctx.fillStyle = enemy.slowFactor < 1 ? "#8f66ff" : "#ff8a3d";
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(8,17,31,0.32)";
+      ctx.fillRect(enemy.x - 16, enemy.y - 22, 32, 5);
+      ctx.fillStyle = "#7ef0bb";
+      ctx.fillRect(enemy.x - 16, enemy.y - 22, 32 * (enemy.hp / enemy.maxHp), 5);
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 760, 440);
+    const bg = ctx.createLinearGradient(0, 0, 0, 440);
+    bg.addColorStop(0, "#08111f");
+    bg.addColorStop(1, "#13365b");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 760, 440);
+    drawPath();
+    drawPads();
+    drawTowers();
+    drawEnemies();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.fillRect(0, 0, 760, 440);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 34px Trebuchet MS";
+      ctx.fillText("Tower Tactics", 380, 206);
+      ctx.font = "22px Trebuchet MS";
+      ctx.fillText("Build towers on pads and stop the wave", 380, 244);
+    } else if (preWaveCountdown > 0) {
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(0, 0, 760, 440);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 28px Trebuchet MS";
+      ctx.fillText(`Wave ${wave} in ${Math.ceil(preWaveCountdown / 30)}`, 380, 220);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  function handleCanvasClick(event) {
+    if (!shell?.canvas) return;
+    const rect = shell.canvas.getBoundingClientRect();
+    const scaleX = shell.canvas.width / rect.width;
+    const scaleY = shell.canvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+    const padIndex = buildingPads.findIndex((pad) => Math.hypot(pad.x - x, pad.y - y) <= 24);
+    if (padIndex >= 0) {
+      placeTower(padIndex);
+    }
+  }
+
+  return {
+    id: "tower",
+    getLevelText: () => `Wave ${wave}`,
+    title: "Tower Tactics",
+    tagline: "Mini tower defense lane hold",
+    subtitle: "Build towers on pads, earn cash, and stop each wave before the base falls.",
+    description:
+      "A compact tower defense game with two tower types, build pads, scaling waves, and a simple upgrade-free survival loop.",
+    controls: "Click a tower button, then click a numbered pad to build there.",
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="tower-card">
+          <div class="canvas-wrap">
+            <div class="canvas-hud">
+              <div class="info-chip-row">
+                <span class="info-chip" data-hud="lives">Lives 10</span>
+                <span class="info-chip" data-hud="cash">Cash 16</span>
+                <span class="info-chip" data-hud="wave">Wave 1</span>
+                <span class="info-chip" data-hud="towers">Towers 0</span>
+              </div>
+            </div>
+            <div class="canvas-card">
+              <canvas></canvas>
+            </div>
+          </div>
+          <div class="action-button-grid"></div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      shell = {
+        wrap: wrapper,
+        canvas: wrapper.querySelector("canvas"),
+        hud: {
+          lives: wrapper.querySelector('[data-hud="lives"]'),
+          cash: wrapper.querySelector('[data-hud="cash"]'),
+          wave: wrapper.querySelector('[data-hud="wave"]'),
+          towers: wrapper.querySelector('[data-hud="towers"]'),
+        },
+      };
+      shell.canvas.width = 760;
+      shell.canvas.height = 440;
+      ctx = shell.canvas.getContext("2d");
+      shell.canvas.addEventListener("click", handleCanvasClick);
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus(`Build up for wave ${wave}`);
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
   };
 }
 

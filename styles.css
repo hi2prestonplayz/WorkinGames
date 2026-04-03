@@ -202,6 +202,16 @@ select {
   color: var(--muted);
 }
 
+.tower-card {
+  width: min(100%, 860px);
+  display: grid;
+  gap: 14px;
+}
+
+.tower-card .canvas-card {
+  margin: 0;
+}
+
 .field-group {
   display: grid;
   gap: 8px;

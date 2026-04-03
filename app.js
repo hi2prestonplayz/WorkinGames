@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260402m";
+const BUILD_VERSION = "20260402n";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -128,8 +128,8 @@ const DIFFICULTY_PRESETS = {
 
 const GAME_CATEGORIES = [
   { label: "Action", ids: ["runner", "space", "dodge", "snout", "maze", "pong", "flappy"] },
-  { label: "Arcade", ids: ["snake", "breakout", "stacker", "whack", "reaction", "typing", "clicker", "rps"] },
-  { label: "Puzzle", ids: ["memory", "merge", "vault", "flood", "lights", "crates", "mines", "hangman"] },
+  { label: "Arcade", ids: ["snake", "breakout", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble"] },
+  { label: "Puzzle", ids: ["memory", "merge", "vault", "flood", "lights", "crates", "mines", "hangman", "scramble"] },
 ];
 
 const els = {
@@ -197,6 +197,8 @@ const games = {
   mines: createMinesGame(),
   reaction: createReactionGame(),
   typing: createTypingRushGame(),
+  bubble: createBubblePopGame(),
+  scramble: createWordScrambleGame(),
 };
 
 boot();
@@ -6392,6 +6394,375 @@ function createDodgeDriftGame() {
       leftPressed = false;
       rightPressed = false;
     },
+  };
+}
+
+function createBubblePopGame() {
+  let wrapper;
+  let arena;
+  let targets = [];
+  let animationId = null;
+  let timerId = null;
+  let nextStageTimeout = null;
+  let running = false;
+  let stageLevel = 1;
+  let popped = 0;
+  let goal = 0;
+  let timeLeft = 0;
+
+  function getStageConfig(level) {
+    const mode = getDifficultyMode();
+    const baseGoal = mode === "easy" ? 6 : mode === "hard" ? 8 : 7;
+    const baseTime = mode === "easy" ? 18 : mode === "hard" ? 14 : 16;
+    const baseSpeed = mode === "easy" ? 1.25 : mode === "hard" ? 2.1 : 1.6;
+    return {
+      goal: baseGoal + Math.floor((level - 1) * 1.5),
+      time: Math.max(8, baseTime - Math.floor((level - 1) / 3)),
+      speed: baseSpeed + (level - 1) * 0.12,
+      count: Math.min(9, 4 + Math.floor((level - 1) / 2)),
+      size: Math.max(38, 62 - Math.floor((level - 1) / 2) * 2),
+    };
+  }
+
+  function clearTimers() {
+    if (animationId) cancelAnimationFrame(animationId);
+    if (timerId) clearInterval(timerId);
+    if (nextStageTimeout) clearTimeout(nextStageTimeout);
+    animationId = null;
+    timerId = null;
+    nextStageTimeout = null;
+  }
+
+  function removeTargets() {
+    targets.forEach((target) => target.el.remove());
+    targets = [];
+  }
+
+  function updateHud() {
+    wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
+    wrapper.querySelector('[data-meta="goal"]').textContent = `Popped ${popped}/${goal}`;
+    wrapper.querySelector('[data-meta="time"]').textContent = `Time ${timeLeft}s`;
+    refreshLevel();
+  }
+
+  function createTarget(index) {
+    const config = getStageConfig(stageLevel);
+    const size = config.size + Math.random() * 10;
+    const el = document.createElement("button");
+    el.className = "bubble-target";
+    el.type = "button";
+    el.textContent = ["1", "2", "3", "4", "5"][index % 5];
+    el.style.width = `${size}px`;
+    el.style.height = `${size}px`;
+    el.style.background = ["#46b1ff", "#8f66ff", "#ff8a3d", "#1eb980", "#ffd166"][index % 5];
+    const target = {
+      x: 20 + Math.random() * 580,
+      y: 20 + Math.random() * 280,
+      vx: (Math.random() < 0.5 ? -1 : 1) * (config.speed + Math.random() * 0.4),
+      vy: (Math.random() < 0.5 ? -1 : 1) * (config.speed + Math.random() * 0.4),
+      size,
+      el,
+    };
+    el.addEventListener("click", () => popTarget(target));
+    arena.appendChild(el);
+    targets.push(target);
+  }
+
+  function renderTargets() {
+    targets.forEach((target) => {
+      target.el.style.transform = `translate(${target.x}px, ${target.y}px)`;
+    });
+  }
+
+  function popTarget(target) {
+    if (!running) return;
+    const index = targets.indexOf(target);
+    if (index < 0) return;
+    targets.splice(index, 1);
+    target.el.remove();
+    popped += 1;
+    setScore(appState.score + 8 + stageLevel * 2);
+    updateHud();
+    if (popped >= goal) {
+      running = false;
+      clearTimers();
+      setScore(appState.score + timeLeft * 6);
+      setStatus(`Stage ${stageLevel} cleared`);
+      nextStageTimeout = window.setTimeout(() => {
+        stageLevel += 1;
+        buildStage(true);
+        startRound();
+      }, 700);
+    }
+  }
+
+  function tick() {
+    if (!running) return;
+    const width = arena.clientWidth || 720;
+    const height = arena.clientHeight || 420;
+    targets.forEach((target) => {
+      target.x += target.vx;
+      target.y += target.vy;
+      if (target.x <= 0 || target.x + target.size >= width) target.vx *= -1;
+      if (target.y <= 0 || target.y + target.size >= height) target.vy *= -1;
+      target.x = clamp(target.x, 0, width - target.size);
+      target.y = clamp(target.y, 0, height - target.size);
+    });
+    renderTargets();
+    animationId = requestAnimationFrame(tick);
+  }
+
+  function startRound() {
+    if (running) return;
+    running = true;
+    setStatus("Pop every bubble");
+    timerId = window.setInterval(() => {
+      timeLeft -= 1;
+      updateHud();
+      if (timeLeft <= 0) {
+        running = false;
+        clearTimers();
+        setStatus(`Time up at stage ${stageLevel}`);
+        scheduleAutoReset();
+      }
+    }, 1000);
+    tick();
+  }
+
+  function buildStage(keepScore = false) {
+    clearTimers();
+    removeTargets();
+    const config = getStageConfig(stageLevel);
+    goal = config.goal;
+    timeLeft = config.time;
+    popped = 0;
+    if (!keepScore) {
+      setScore(0);
+    } else {
+      refreshLevel();
+    }
+    for (let index = 0; index < config.count; index += 1) {
+      createTarget(index);
+    }
+    renderTargets();
+    updateHud();
+  }
+
+  function resetState() {
+    running = false;
+    stageLevel = 1;
+    buildStage();
+    setStatus("Ready");
+  }
+
+  return {
+    id: "bubble",
+    getLevelText: () => String(stageLevel),
+    title: "Bubble Pop",
+    tagline: "Bounce-and-click target rush",
+    subtitle: "Pop moving targets before the timer runs out and keep climbing stages.",
+    description:
+      "A fast arcade clicker where colorful targets bounce around the arena and every cleared stage speeds things up.",
+    controls: "Click the moving bubbles before time runs out.",
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <div class="info-chip-row">
+              <span class="info-chip" data-meta="stage">Stage 1</span>
+              <span class="info-chip" data-meta="goal">Popped 0/0</span>
+              <span class="info-chip" data-meta="time">Time 0s</span>
+            </div>
+          </div>
+          <div class="bubble-arena"></div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      arena = wrapper.querySelector(".bubble-arena");
+      resetState();
+    },
+    start() {
+      startRound();
+    },
+    reset() {
+      resetState();
+    },
+    destroy() {
+      running = false;
+      clearTimers();
+      removeTargets();
+    },
+  };
+}
+
+function createWordScrambleGame() {
+  let wrapper;
+  let stageLevel = 1;
+  let triesLeft = 0;
+  let answer = "";
+  let hint = "";
+  let scrambled = "";
+  const wordBank = {
+    easy: [
+      { word: "score", hint: "What every arcade game tracks." },
+      { word: "coins", hint: "Collect these in runners." },
+      { word: "snake", hint: "Classic grid crawler." },
+      { word: "paddle", hint: "Used in Pong and Breakout." },
+      { word: "ghost", hint: "Pac style maze enemy." },
+      { word: "timer", hint: "Counts down in challenge modes." },
+    ],
+    normal: [
+      { word: "arcade", hint: "A whole portal of mini games." },
+      { word: "meteor", hint: "Space Blaster falling hazard." },
+      { word: "shield", hint: "Space Blaster defense stat." },
+      { word: "runner", hint: "Subway style endless lane game." },
+      { word: "bubble", hint: "Something you pop in the new game." },
+      { word: "streak", hint: "What you build by winning in RPS Rush." },
+    ],
+    hard: [
+      { word: "stabilizer", hint: "One of the Space Blaster upgrades." },
+      { word: "difficulty", hint: "Chill through Chaos setting." },
+      { word: "powerpellet", hint: "Maze Escape boosted pickup." },
+      { word: "controller", hint: "What smooth games always need." },
+      { word: "scoreboard", hint: "Where best runs get remembered." },
+      { word: "animations", hint: "They make UI feel alive." },
+    ],
+  };
+
+  function getPool() {
+    return wordBank[getDifficultyPreset().typingPool] || wordBank.normal;
+  }
+
+  function scrambleWord(word) {
+    let next = word;
+    while (next === word) {
+      next = word
+        .split("")
+        .sort(() => Math.random() - 0.5)
+        .join("");
+    }
+    return next.toUpperCase();
+  }
+
+  function getTriesBase() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return 6;
+    if (mode === "hard") return 4;
+    return 5;
+  }
+
+  function updateHud() {
+    wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
+    wrapper.querySelector('[data-meta="tries"]').textContent = `Tries ${triesLeft}`;
+    refreshLevel();
+  }
+
+  function renderRound(feedback = "Unscramble the word.") {
+    wrapper.querySelector(".scramble-word").textContent = scrambled;
+    wrapper.querySelector(".scramble-hint").textContent = hint;
+    wrapper.querySelector(".scramble-feedback").textContent = feedback;
+    wrapper.querySelector("input").value = "";
+    updateHud();
+  }
+
+  function loadStage(level, keepScore = false) {
+    stageLevel = level;
+    const pool = getPool();
+    const entry = pool[(level - 1) % pool.length];
+    answer = entry.word.toLowerCase();
+    hint = entry.hint;
+    scrambled = scrambleWord(answer);
+    triesLeft = getTriesBase();
+    if (!keepScore) {
+      setScore(0);
+    } else {
+      refreshLevel();
+    }
+    renderRound();
+    setStatus(`Stage ${stageLevel}`);
+  }
+
+  function submitGuess() {
+    const input = wrapper.querySelector("input");
+    const guess = input.value.trim().toLowerCase();
+    if (!guess) return;
+    if (guess === answer) {
+      setScore(appState.score + 20 + triesLeft * 6);
+      setStatus("Correct");
+      if (stageLevel >= 10) {
+        renderRound(`Correct. The word was ${answer.toUpperCase()}.`);
+        setStatus("All stages cleared");
+        return;
+      }
+      renderRound(`Correct. The word was ${answer.toUpperCase()}.`);
+      window.setTimeout(() => {
+        loadStage(stageLevel + 1, true);
+      }, 650);
+      return;
+    }
+    triesLeft -= 1;
+    if (triesLeft <= 0) {
+      renderRound(`Out of tries. The word was ${answer.toUpperCase()}.`);
+      setStatus("Locked out");
+      scheduleAutoReset();
+      return;
+    }
+    renderRound("Not quite. Try again.");
+    setStatus("Keep guessing");
+  }
+
+  return {
+    id: "scramble",
+    getLevelText: () => String(stageLevel),
+    title: "Word Scramble",
+    tagline: "Unscramble arcade words",
+    subtitle: "Untangle mixed-up words, use the hint, and climb through ten quick stages.",
+    description:
+      "A simple word puzzle with arcade-themed answers, stage progression, and a short hint for every round.",
+    controls: "Type the answer, then check it or skip to a new scramble.",
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="scramble-card">
+          <div class="game-meta">
+            <div class="info-chip-row">
+              <span class="info-chip" data-meta="stage">Stage 1</span>
+              <span class="info-chip" data-meta="tries">Tries 0</span>
+            </div>
+          </div>
+          <div class="scramble-word"></div>
+          <div class="scramble-hint"></div>
+          <div class="scramble-controls">
+            <input class="field-control" type="text" placeholder="Type the answer" />
+            <button class="primary-button" data-action="check">Check</button>
+            <button class="secondary-button" data-action="skip">Skip</button>
+          </div>
+          <div class="scramble-feedback"></div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      wrapper.querySelector('[data-action="check"]').addEventListener("click", submitGuess);
+      wrapper.querySelector('[data-action="skip"]').addEventListener("click", () => {
+        triesLeft = Math.max(1, triesLeft - 1);
+        scrambled = scrambleWord(answer);
+        renderRound("Skipped. Here is a new shuffle.");
+        setStatus("New shuffle");
+      });
+      wrapper.querySelector("input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          submitGuess();
+        }
+      });
+      loadStage(1);
+    },
+    start() {
+      setStatus(`Stage ${stageLevel}`);
+    },
+    reset() {
+      loadStage(1);
+    },
+    destroy() {},
   };
 }
 

@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260402n";
+const BUILD_VERSION = "20260403b";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -995,10 +995,14 @@ function createPongGame() {
     player.y += downPressed ? 6 : 0;
     player.y = clamp(player.y, 0, 440 - player.height);
 
-    if (Math.random() < 0.045) {
-      aiTargetY = ball.y + (Math.random() * 90 - 45);
+    if (ball.vx > 0) {
+      if (Math.random() < 0.03) {
+        aiTargetY = ball.y + (Math.random() * 130 - 65);
+      }
+    } else if (Math.random() < 0.02) {
+      aiTargetY = 220 + (Math.random() * 120 - 60);
     }
-    const aiSpeed = ball.x > 420 ? 3.15 : 2.15;
+    const aiSpeed = ball.x > 520 ? 2.35 : 1.45;
     ai.y += aiTargetY > ai.y + ai.height / 2 ? aiSpeed : -aiSpeed;
     ai.y = clamp(ai.y, 0, 440 - ai.height);
 
@@ -1285,6 +1289,7 @@ function createMergeGame() {
   let wrapper;
   let board = [];
   let running = true;
+  let slideClassTimer = null;
 
   function emptyBoard() {
     return Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => 0));
@@ -1320,6 +1325,18 @@ function createMergeGame() {
       )
       .join("");
     refreshLevel();
+  }
+
+  function animateSlide(direction) {
+    const grid = wrapper?.querySelector(".merge-grid");
+    if (!grid) return;
+    if (slideClassTimer) clearTimeout(slideClassTimer);
+    grid.classList.remove("slide-left", "slide-right", "slide-up", "slide-down");
+    grid.classList.add(`slide-${direction}`);
+    slideClassTimer = window.setTimeout(() => {
+      grid.classList.remove("slide-left", "slide-right", "slide-up", "slide-down");
+      slideClassTimer = null;
+    }, 140);
   }
 
   function slideRowLeft(row) {
@@ -1382,6 +1399,7 @@ function createMergeGame() {
     addRandomTile();
     setScore(appState.score + gained);
     renderBoard();
+    animateSlide(direction);
     if (isGameOver()) {
       running = false;
       setStatus(`Game over - ${appState.score}`);
@@ -1451,7 +1469,10 @@ function createMergeGame() {
       const direction = directionMap[event.key];
       if (direction) performMove(direction);
     },
-    destroy() {},
+    destroy() {
+      if (slideClassTimer) clearTimeout(slideClassTimer);
+      slideClassTimer = null;
+    },
   };
 }
 
@@ -6419,7 +6440,7 @@ function createBubblePopGame() {
       goal: baseGoal + Math.floor((level - 1) * 1.5),
       time: Math.max(8, baseTime - Math.floor((level - 1) / 3)),
       speed: baseSpeed + (level - 1) * 0.12,
-      count: Math.min(9, 4 + Math.floor((level - 1) / 2)),
+      count: Math.min(12, 8 + Math.floor((level - 1) / 2)),
       size: Math.max(38, 62 - Math.floor((level - 1) / 2) * 2),
     };
   }
@@ -6448,6 +6469,8 @@ function createBubblePopGame() {
   function createTarget(index) {
     const config = getStageConfig(stageLevel);
     const size = config.size + Math.random() * 10;
+    const width = Math.max(160, (arena?.clientWidth || 720) - size - 16);
+    const height = Math.max(120, (arena?.clientHeight || 420) - size - 16);
     const el = document.createElement("button");
     el.className = "bubble-target";
     el.type = "button";
@@ -6456,8 +6479,8 @@ function createBubblePopGame() {
     el.style.height = `${size}px`;
     el.style.background = ["#46b1ff", "#8f66ff", "#ff8a3d", "#1eb980", "#ffd166"][index % 5];
     const target = {
-      x: 20 + Math.random() * 580,
-      y: 20 + Math.random() * 280,
+      x: 8 + Math.random() * width,
+      y: 8 + Math.random() * height,
       vx: (Math.random() < 0.5 ? -1 : 1) * (config.speed + Math.random() * 0.4),
       vy: (Math.random() < 0.5 ? -1 : 1) * (config.speed + Math.random() * 0.4),
       size,
@@ -6514,6 +6537,7 @@ function createBubblePopGame() {
 
   function startRound() {
     if (running) return;
+    clearAutoReset();
     running = true;
     setStatus("Pop every bubble");
     timerId = window.setInterval(() => {
@@ -6550,6 +6574,7 @@ function createBubblePopGame() {
 
   function resetState() {
     running = false;
+    clearAutoReset();
     stageLevel = 1;
     buildStage();
     setStatus("Ready");

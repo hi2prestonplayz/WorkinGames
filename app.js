@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260405a";
+const BUILD_VERSION = "20260405c";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -4400,65 +4400,246 @@ function createCrateQuestGame() {
   let moves = 0;
   let nextStageTimeout = null;
   let history = [];
-  const levels = [
-    [
-      "#######",
-      "#.....#",
-      "#..P..#",
-      "#..B..#",
-      "#..G..#",
-      "#.....#",
-      "#######",
+  const levelSets = {
+    easy: [
+      [
+        "#######",
+        "#.....#",
+        "#..P..#",
+        "#..B..#",
+        "#..G..#",
+        "#.....#",
+        "#######",
+      ],
+      [
+        "########",
+        "#......#",
+        "#..P...#",
+        "#...B..#",
+        "#...G..#",
+        "#......#",
+        "########",
+      ],
+      [
+        "#########",
+        "#.......#",
+        "#..P....#",
+        "#..BB...#",
+        "#..GG...#",
+        "#.......#",
+        "#########",
+      ],
+      [
+        "#########",
+        "#.......#",
+        "#..P.B..#",
+        "#.......#",
+        "#..B....#",
+        "#..G.G..#",
+        "#.......#",
+        "#########",
+      ],
+      [
+        "##########",
+        "#........#",
+        "#..P.....#",
+        "#..B.B...#",
+        "#........#",
+        "#..G.G...#",
+        "#........#",
+        "##########",
+      ],
+      [
+        "##########",
+        "#........#",
+        "#..P.....#",
+        "#..BBB...#",
+        "#........#",
+        "#..GGG...#",
+        "#........#",
+        "##########",
+      ],
     ],
-    [
-      "########",
-      "#......#",
-      "#..P...#",
-      "#..B...#",
-      "#..G...#",
-      "#......#",
-      "########",
+    normal: [
+      [
+        "#########",
+        "#.......#",
+        "#..P.B..#",
+        "#.......#",
+        "#..B....#",
+        "#..G.G..#",
+        "#.......#",
+        "#########",
+      ],
+      [
+        "##########",
+        "#........#",
+        "#..P.....#",
+        "#..B.B...#",
+        "#........#",
+        "#..G.G...#",
+        "#........#",
+        "##########",
+      ],
+      [
+        "##########",
+        "#........#",
+        "#..P.....#",
+        "#..BBB...#",
+        "#........#",
+        "#..GGG...#",
+        "#........#",
+        "##########",
+      ],
+      [
+        "###########",
+        "#.........#",
+        "#..P......#",
+        "#..B.B....#",
+        "#.....B...#",
+        "#..G.G....#",
+        "#.....G...#",
+        "#.........#",
+        "###########",
+      ],
+      [
+        "###########",
+        "#.........#",
+        "#....P....#",
+        "#..BB.....#",
+        "#.....BB..#",
+        "#..GG.....#",
+        "#.....GG..#",
+        "#.........#",
+        "###########",
+      ],
+      [
+        "############",
+        "#..........#",
+        "#..P.......#",
+        "#..B.B.B...#",
+        "#..........#",
+        "#..G.G.G...#",
+        "#..........#",
+        "############",
+      ],
+      [
+        "############",
+        "#..........#",
+        "#....P.....#",
+        "#..BB......#",
+        "#......BB..#",
+        "#..GG......#",
+        "#......GG..#",
+        "#..........#",
+        "############",
+      ],
+      [
+        "#############",
+        "#...........#",
+        "#....P......#",
+        "#..B.B.B....#",
+        "#......B....#",
+        "#..G.G.G....#",
+        "#......G....#",
+        "#...........#",
+        "#############",
+      ],
     ],
-    [
-      "#########",
-      "#.......#",
-      "#..P....#",
-      "#..BB...#",
-      "#..GG...#",
-      "#.......#",
-      "#########",
+    hard: [
+      [
+        "###########",
+        "#.........#",
+        "#....P....#",
+        "#..BB.....#",
+        "#.....BB..#",
+        "#..GG.....#",
+        "#.....GG..#",
+        "#.........#",
+        "###########",
+      ],
+      [
+        "############",
+        "#..........#",
+        "#..P.......#",
+        "#..B.B.B...#",
+        "#..........#",
+        "#..G.G.G...#",
+        "#..........#",
+        "############",
+      ],
+      [
+        "############",
+        "#..........#",
+        "#....P.....#",
+        "#..BB......#",
+        "#......BB..#",
+        "#..GG......#",
+        "#......GG..#",
+        "#..........#",
+        "############",
+      ],
+      [
+        "#############",
+        "#...........#",
+        "#....P......#",
+        "#..B.B.B....#",
+        "#......B....#",
+        "#..G.G.G....#",
+        "#......G....#",
+        "#...........#",
+        "#############",
+      ],
+      [
+        "#############",
+        "#...........#",
+        "#.....P.....#",
+        "#..BB..BB...#",
+        "#...........#",
+        "#..GG..GG...#",
+        "#...........#",
+        "#############",
+      ],
+      [
+        "##############",
+        "#............#",
+        "#.....P......#",
+        "#..B.B..B....#",
+        "#......B.....#",
+        "#..G.G..G....#",
+        "#......G.....#",
+        "#............#",
+        "##############",
+      ],
+      [
+        "##############",
+        "#............#",
+        "#......P.....#",
+        "#..BB...BB...#",
+        "#............#",
+        "#..GG...GG...#",
+        "#............#",
+        "##############",
+      ],
+      [
+        "###############",
+        "#.............#",
+        "#......P......#",
+        "#..B.B.B.B....#",
+        "#.............#",
+        "#..G.G.G.G....#",
+        "#.............#",
+        "###############",
+      ],
     ],
-    [
-      "#########",
-      "#.......#",
-      "#..P....#",
-      "#..B#...#",
-      "#..G#B..#",
-      "#....G..#",
-      "#.......#",
-      "#########",
-    ],
-    [
-      "##########",
-      "#........#",
-      "#..P.....#",
-      "#..BB....#",
-      "#..##....#",
-      "#..GG....#",
-      "#........#",
-      "##########",
-    ],
-    [
-      "##########",
-      "#........#",
-      "#..P..B..#",
-      "#..##....#",
-      "#..B..G..#",
-      "#.....G..#",
-      "#........#",
-      "##########",
-    ],
-  ];
+  };
+
+  function getLevels() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return levelSets.easy;
+    if (mode === "hard") return levelSets.hard;
+    return levelSets.normal;
+  }
 
   function cloneBoard(nextBoard) {
     return nextBoard.map((row) => [...row]);
@@ -4489,6 +4670,7 @@ function createCrateQuestGame() {
   }
 
   function loadLevel(index, preserveScore = false) {
+    const levels = getLevels();
     if (nextStageTimeout) {
       clearTimeout(nextStageTimeout);
       nextStageTimeout = null;
@@ -4513,6 +4695,7 @@ function createCrateQuestGame() {
   }
 
   function isGoal(row, col) {
+    const levels = getLevels();
     return levels[levelIndex][row][col] === "G";
   }
 
@@ -4527,10 +4710,12 @@ function createCrateQuestGame() {
   }
 
   function getGoalCount() {
+    const levels = getLevels();
     return levels[levelIndex].join("").split("").filter((cell) => cell === "G").length;
   }
 
   function updateHud() {
+    const levels = getLevels();
     wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${levelIndex + 1}/${levels.length}`;
     wrapper.querySelector('[data-meta="moves"]').textContent = `Moves ${moves}`;
     wrapper.querySelector('[data-meta="goals"]').textContent = `Goals ${getBoxesOnGoals()}/${getGoalCount()}`;
@@ -4618,9 +4803,10 @@ function createCrateQuestGame() {
     tagline: "Sokoban-style push puzzle",
     subtitle: "Push every crate onto a target and clear each stage one by one.",
     description:
-      "A small Sokoban-style puzzle run with multiple stages. Move carefully, push crates onto goals, and avoid trapping yourself.",
-    controls: "Use arrow keys or WASD to move and push crates.",
+      "A Sokoban-style puzzle run with different stage ladders for easier or harder difficulty settings. Move carefully, push crates onto goals, and avoid trapping yourself.",
+    controls: "Use arrow keys or WASD to move and push crates. Use U to undo or R to retry the stage.",
     mount(stage) {
+      const levels = getLevels();
       stage.innerHTML = "";
       wrapper = createDomShell(`
         <div class="stack-layout">

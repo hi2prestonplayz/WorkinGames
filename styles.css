@@ -202,14 +202,142 @@ select {
   color: var(--muted);
 }
 
+.slots-card,
+.code-card {
+  width: min(100%, 720px);
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 16px;
+}
+
+.reel-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.slot-reel {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top, rgba(255, 209, 102, 0.2), transparent 55%),
+    rgba(9, 18, 30, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: clamp(1.3rem, 4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.code-current,
+.code-palette,
+.code-history {
+  display: grid;
+  gap: 10px;
+}
+
+.code-current {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.code-slot,
+.guess-row {
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.code-slot {
+  min-height: 84px;
+  display: grid;
+  place-items: center;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.code-palette {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.guess-row {
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.guess-pegs {
+  display: flex;
+  gap: 8px;
+}
+
+.guess-feedback {
+  color: var(--muted);
+}
+
+.color-choice {
+  font-weight: 700;
+}
+
+.color-peg {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #08111f;
+  font-weight: 800;
+}
+
+.color-red {
+  background: #ff6b6b;
+}
+
+.color-blue {
+  background: #46b1ff;
+}
+
+.color-green {
+  background: #7ef0bb;
+}
+
+.color-gold {
+  background: #ffd166;
+}
+
+.color-pink {
+  background: #ff8cc6;
+}
+
+.color-cyan {
+  background: #86f7ff;
+}
+
 .tower-card {
-  width: min(100%, 860px);
+  width: min(100%, 1040px);
   display: grid;
   gap: 14px;
 }
 
 .tower-card .canvas-card {
   margin: 0;
+}
+
+.tower-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.tower-note {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
 
 .field-group {
@@ -825,6 +953,7 @@ select {
 .guess-log {
   min-height: 80px;
   color: var(--muted);
+  line-height: 1.5;
 }
 
 .rps-grid {

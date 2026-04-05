@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260403c";
+const BUILD_VERSION = "20260405a";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -127,9 +127,9 @@ const DIFFICULTY_PRESETS = {
 };
 
 const GAME_CATEGORIES = [
-  { label: "Action", ids: ["runner", "space", "tower", "dodge", "snout", "maze", "pong", "flappy"] },
-  { label: "Arcade", ids: ["snake", "breakout", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble"] },
-  { label: "Puzzle", ids: ["memory", "merge", "vault", "flood", "lights", "crates", "mines", "hangman", "scramble"] },
+  { label: "Action", ids: ["runner", "space", "tower", "hopper", "dodge", "snout", "maze", "pong", "flappy"] },
+  { label: "Arcade", ids: ["snake", "breakout", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots"] },
+  { label: "Puzzle", ids: ["memory", "merge", "vault", "flood", "lights", "crates", "mines", "hangman", "scramble", "code"] },
 ];
 
 const els = {
@@ -178,6 +178,7 @@ const games = {
   runner: createRunnerGame(),
   breakout: createBreakoutGame(),
   pong: createPongGame(),
+  hopper: createLaneHopperGame(),
   dodge: createDodgeDriftGame(),
   space: createSpaceBlasterGame(),
   tower: createTowerTacticsGame(),
@@ -199,7 +200,9 @@ const games = {
   reaction: createReactionGame(),
   typing: createTypingRushGame(),
   bubble: createBubblePopGame(),
+  slots: createLuckySlotsGame(),
   scramble: createWordScrambleGame(),
+  code: createCodeBreakerGame(),
 };
 
 boot();
@@ -3938,19 +3941,21 @@ function createNumberVaultGame() {
   let target = 0;
   let maxNumber = 100;
   let attemptsLeft = 8;
+  let lowBound = 1;
+  let highBound = 100;
   let solved = false;
   let guessesUsed = 0;
 
   function getConfig() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") return { maxNumber: 50, attempts: 10 };
-    if (getDifficultyMode() === "hard") return { maxNumber: 150, attempts: 7 };
-    return { maxNumber: 100, attempts: 8 };
+    if (getDifficultyMode() === "easy") return { maxNumber: 40, attempts: 12 };
+    if (getDifficultyMode() === "hard") return { maxNumber: 120, attempts: 8 };
+    return { maxNumber: 80, attempts: 10 };
   }
 
   function updateHud() {
-    wrapper.querySelector('[data-meta="range"]').textContent = `Range 1-${maxNumber}`;
+    wrapper.querySelector('[data-meta="range"]').textContent = `Window ${lowBound}-${highBound}`;
     wrapper.querySelector('[data-meta="attempts"]').textContent = `Attempts ${attemptsLeft}`;
+    wrapper.querySelector('[data-meta="best"]').textContent = `Target 1-${maxNumber}`;
     refreshLevel();
   }
 
@@ -3958,11 +3963,13 @@ function createNumberVaultGame() {
     const config = getConfig();
     maxNumber = config.maxNumber;
     attemptsLeft = config.attempts;
+    lowBound = 1;
+    highBound = maxNumber;
     target = 1 + Math.floor(Math.random() * maxNumber);
     solved = false;
     guessesUsed = 0;
     setScore(0);
-    wrapper.querySelector(".guess-log").textContent = `Guess a number from 1 to ${maxNumber}.`;
+    wrapper.querySelector(".guess-log").textContent = `Guess a number from 1 to ${maxNumber}. Each wrong guess now shrinks the live range for you.`;
     wrapper.querySelector("input").value = "";
     updateHud();
     setStatus("Crack the vault");
@@ -3974,6 +3981,10 @@ function createNumberVaultGame() {
     const guess = Number(input.value);
     if (!Number.isFinite(guess) || guess < 1 || guess > maxNumber) {
       wrapper.querySelector(".guess-log").textContent = `Enter a number between 1 and ${maxNumber}.`;
+      return;
+    }
+    if (guess < lowBound || guess > highBound) {
+      wrapper.querySelector(".guess-log").textContent = `Stay inside the narrowed window: ${lowBound}-${highBound}.`;
       return;
     }
 
@@ -3996,7 +4007,14 @@ function createNumberVaultGame() {
     }
 
     const hint = guess < target ? "Too low" : "Too high";
-    wrapper.querySelector(".guess-log").textContent = `${hint}. Try again.`;
+    if (guess < target) {
+      lowBound = Math.max(lowBound, guess + 1);
+    } else {
+      highBound = Math.min(highBound, guess - 1);
+    }
+    const distance = Math.abs(target - guess);
+    const closeness = distance <= 3 ? " Very close." : distance <= 8 ? " Close." : "";
+    wrapper.querySelector(".guess-log").textContent = `${hint}. New window: ${lowBound}-${highBound}.${closeness}`;
   }
 
   return {
@@ -4014,8 +4032,9 @@ function createNumberVaultGame() {
         <div class="guess-card">
           <div class="game-meta">
             <div class="info-chip-row">
-              <span class="info-chip" data-meta="range">Range 1-100</span>
+              <span class="info-chip" data-meta="range">Window 1-100</span>
               <span class="info-chip" data-meta="attempts">Attempts 8</span>
+              <span class="info-chip" data-meta="best">Target 1-100</span>
             </div>
           </div>
           <div class="guess-controls">
@@ -4380,11 +4399,13 @@ function createCrateQuestGame() {
   let player = { row: 0, col: 0 };
   let moves = 0;
   let nextStageTimeout = null;
+  let history = [];
   const levels = [
     [
       "#######",
       "#.....#",
-      "#.BP..#",
+      "#..P..#",
+      "#..B..#",
       "#..G..#",
       "#.....#",
       "#######",
@@ -4392,30 +4413,80 @@ function createCrateQuestGame() {
     [
       "########",
       "#......#",
-      "#.B#P..#",
-      "#..#G..#",
-      "#......#",
-      "########",
-    ],
-    [
-      "########",
-      "#......#",
-      "#.BBP..#",
-      "#..GG..#",
+      "#..P...#",
+      "#..B...#",
+      "#..G...#",
       "#......#",
       "########",
     ],
     [
       "#########",
       "#.......#",
-      "#.B.#P..#",
-      "#...#...#",
-      "#.G...B.#",
+      "#..P....#",
+      "#..BB...#",
+      "#..GG...#",
+      "#.......#",
+      "#########",
+    ],
+    [
+      "#########",
+      "#.......#",
+      "#..P....#",
+      "#..B#...#",
+      "#..G#B..#",
       "#....G..#",
       "#.......#",
       "#########",
     ],
+    [
+      "##########",
+      "#........#",
+      "#..P.....#",
+      "#..BB....#",
+      "#..##....#",
+      "#..GG....#",
+      "#........#",
+      "##########",
+    ],
+    [
+      "##########",
+      "#........#",
+      "#..P..B..#",
+      "#..##....#",
+      "#..B..G..#",
+      "#.....G..#",
+      "#........#",
+      "##########",
+    ],
   ];
+
+  function cloneBoard(nextBoard) {
+    return nextBoard.map((row) => [...row]);
+  }
+
+  function pushHistory() {
+    history.push({
+      board: cloneBoard(board),
+      player: { ...player },
+      moves,
+    });
+    if (history.length > 40) {
+      history.shift();
+    }
+  }
+
+  function undoMove() {
+    if (!history.length) {
+      setStatus("Nothing to undo");
+      return;
+    }
+    const snapshot = history.pop();
+    board = cloneBoard(snapshot.board);
+    player = { ...snapshot.player };
+    moves = snapshot.moves;
+    renderBoard();
+    setStatus("Undid last move");
+  }
 
   function loadLevel(index, preserveScore = false) {
     if (nextStageTimeout) {
@@ -4425,6 +4496,7 @@ function createCrateQuestGame() {
     levelIndex = clamp(index, 0, levels.length - 1);
     board = levels[levelIndex].map((row) => row.split(""));
     moves = 0;
+    history = [];
     board.forEach((row, rowIndex) => {
       row.forEach((cell, colIndex) => {
         if (cell === "P") {
@@ -4505,11 +4577,15 @@ function createCrateQuestGame() {
     const nextRow = player.row + deltaRow;
     const nextCol = player.col + deltaCol;
     if (!canEnter(nextRow, nextCol)) return;
+    pushHistory();
 
     if (board[nextRow][nextCol] === "B") {
       const pushRow = nextRow + deltaRow;
       const pushCol = nextCol + deltaCol;
-      if (!canEnter(pushRow, pushCol) || board[pushRow][pushCol] === "B") return;
+      if (!canEnter(pushRow, pushCol) || board[pushRow][pushCol] === "B") {
+        history.pop();
+        return;
+      }
       board[pushRow][pushCol] = "B";
       board[nextRow][nextCol] = ".";
     }
@@ -4550,15 +4626,24 @@ function createCrateQuestGame() {
         <div class="stack-layout">
           <div class="game-meta">
             <div class="info-chip-row">
-              <span class="info-chip" data-meta="stage">Stage 1/4</span>
+              <span class="info-chip" data-meta="stage">Stage 1/${levels.length}</span>
               <span class="info-chip" data-meta="moves">Moves 0</span>
               <span class="info-chip" data-meta="goals">Goals 0/0</span>
             </div>
+          </div>
+          <div class="action-button-grid">
+            <button class="mini-button" data-action="undo">Undo</button>
+            <button class="mini-button" data-action="retry">Retry stage</button>
           </div>
           <div class="crate-grid"></div>
         </div>
       `);
       stage.appendChild(wrapper);
+      wrapper.querySelector('[data-action="undo"]').addEventListener("click", undoMove);
+      wrapper.querySelector('[data-action="retry"]').addEventListener("click", () => {
+        loadLevel(levelIndex, true);
+        setStatus(`Stage ${levelIndex + 1} reset`);
+      });
       loadLevel(0);
     },
     start() {
@@ -4568,6 +4653,15 @@ function createCrateQuestGame() {
       loadLevel(0);
     },
     onKeyDown(event) {
+      if (["u", "U"].includes(event.key)) {
+        undoMove();
+        return;
+      }
+      if (["r", "R"].includes(event.key)) {
+        loadLevel(levelIndex, true);
+        setStatus(`Stage ${levelIndex + 1} reset`);
+        return;
+      }
       if (["ArrowUp", "w", "W"].includes(event.key)) tryMove(-1, 0);
       if (["ArrowDown", "s", "S"].includes(event.key)) tryMove(1, 0);
       if (["ArrowLeft", "a", "A"].includes(event.key)) tryMove(0, -1);
@@ -5757,7 +5851,6 @@ function createMazeEscapeGame() {
     for (let row = 1; row < layout.length - 1; row += 1) {
       for (let col = 1; col < layout[row].length - 1; col += 1) {
         if (layout[row][col] !== ".") continue;
-        if (row === player.row && col === player.col) continue;
         if (cageCells.has(getKey(row, col)) || doorCells.has(getKey(row, col))) continue;
         pellets.add(getKey(row, col));
         totalPellets += 1;
@@ -5766,6 +5859,7 @@ function createMazeEscapeGame() {
 
     seedPowerPellets();
     spawnGhosts();
+    clearPellet(player.row, player.col, true);
     renderBoard();
     setStatus("Eat every pellet");
   }
@@ -6050,7 +6144,7 @@ function createMazeEscapeGame() {
     }
   }
 
-  function clearPellet(row, col) {
+  function clearPellet(row, col, silent = false) {
     const pelletKey = getKey(row, col);
     if (!pellets.has(pelletKey)) return;
     pellets.delete(pelletKey);
@@ -6058,10 +6152,14 @@ function createMazeEscapeGame() {
     if (powerPellets.has(pelletKey)) {
       powerPellets.delete(pelletKey);
       powerModeUntil = Date.now() + 5500;
-      setScore(appState.score + 20);
-      setStatus("Power mode");
+      if (!silent) {
+        setScore(appState.score + 20);
+        setStatus("Power mode");
+      }
     } else {
-      setScore(appState.score + 6);
+      if (!silent) {
+        setScore(appState.score + 6);
+      }
     }
   }
 
@@ -6792,6 +6890,544 @@ function createWordScrambleGame() {
   };
 }
 
+function createLaneHopperGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let lives = 3;
+  let crossings = 0;
+  let player = { col: 3, row: 8 };
+  let lanes = [];
+  const cols = 7;
+  const rows = 9;
+  const cellSize = 64;
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { lives: 4, speed: 1.7, density: 0.28 };
+    if (mode === "hard") return { lives: 2, speed: 2.5, density: 0.42 };
+    return { lives: 3, speed: 2.1, density: 0.35 };
+  }
+
+  function buildLanes() {
+    const config = getConfig();
+    lanes = Array.from({ length: rows - 2 }, (_, laneIndex) => {
+      const row = laneIndex + 1;
+      const direction = laneIndex % 2 === 0 ? 1 : -1;
+      const obstacleCount = 2 + (laneIndex % 2) + (config.density > 0.38 ? 1 : 0);
+      const width = laneIndex % 3 === 0 ? 1.35 : 1;
+      return {
+        row,
+        direction,
+        speed: config.speed + laneIndex * 0.12 + crossings * 0.03,
+        obstacles: Array.from({ length: obstacleCount }, (_, index) => ({
+          x: ((index * 2.9 + laneIndex * 0.8) % (cols + 3)) - 2,
+          width,
+        })),
+      };
+    });
+  }
+
+  function updateHud() {
+    shell.hud.lives.textContent = `Lives ${lives}`;
+    shell.hud.crossings.textContent = `Crossings ${crossings}`;
+    shell.hud.lane.textContent = `Rows ${rows - 2}`;
+    refreshLevel();
+  }
+
+  function resetPlayer() {
+    player = { col: Math.floor(cols / 2), row: rows - 1 };
+  }
+
+  function resetState() {
+    const config = getConfig();
+    lives = config.lives;
+    crossings = 0;
+    running = false;
+    resetPlayer();
+    buildLanes();
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function collidePlayer() {
+    lives -= 1;
+    if (lives <= 0) {
+      running = false;
+      setStatus("Traffic win - auto reset");
+      scheduleAutoReset();
+      updateHud();
+      draw();
+      return;
+    }
+    resetPlayer();
+    updateHud();
+    setStatus("Bonk - try again");
+  }
+
+  function handleGoal() {
+    crossings += 1;
+    setScore(appState.score + 20 + crossings * 3);
+    resetPlayer();
+    buildLanes();
+    updateHud();
+    setStatus(`Crossing ${crossings} cleared`);
+  }
+
+  function update() {
+    if (!running) return;
+    lanes.forEach((lane) => {
+      lane.obstacles.forEach((obstacle) => {
+        obstacle.x += (lane.speed * lane.direction) / 60;
+        if (lane.direction > 0 && obstacle.x > cols + 1.5) {
+          obstacle.x = -obstacle.width - Math.random() * 2;
+        } else if (lane.direction < 0 && obstacle.x < -obstacle.width - 1.5) {
+          obstacle.x = cols + Math.random() * 2;
+        }
+      });
+      if (player.row === lane.row) {
+        const hit = lane.obstacles.some((obstacle) => player.col + 0.72 > obstacle.x && player.col + 0.28 < obstacle.x + obstacle.width);
+        if (hit) {
+          collidePlayer();
+        }
+      }
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, cols * cellSize, rows * cellSize);
+    for (let row = 0; row < rows; row += 1) {
+      ctx.fillStyle = row === 0 ? "#1eb980" : row === rows - 1 ? "#46b1ff" : row % 2 === 0 ? "#102236" : "#122a43";
+      ctx.fillRect(0, row * cellSize, cols * cellSize, cellSize);
+    }
+
+    lanes.forEach((lane) => {
+      lane.obstacles.forEach((obstacle) => {
+        ctx.fillStyle = lane.direction > 0 ? "#ff8a3d" : "#8f66ff";
+        ctx.fillRect(obstacle.x * cellSize + 6, lane.row * cellSize + 14, obstacle.width * cellSize - 12, cellSize - 28);
+      });
+    });
+
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath();
+    ctx.arc(player.col * cellSize + cellSize / 2, player.row * cellSize + cellSize / 2, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      ctx.fillRect(0, 0, cols * cellSize, rows * cellSize);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 32px Trebuchet MS";
+      ctx.fillText("Lane Hopper", (cols * cellSize) / 2, 240);
+      ctx.font = "20px Trebuchet MS";
+      ctx.fillText("Cross the road and keep your lives", (cols * cellSize) / 2, 276);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "hopper",
+    title: "Lane Hopper",
+    tagline: "Frogger-style lane dash",
+    subtitle: "Cross the lanes, dodge traffic, and keep stacking successful crossings.",
+    description:
+      "A quick lane-crossing game where you hop upward through moving traffic. Each successful crossing makes the next set of lanes a little meaner.",
+    controls: "Use arrow keys or WASD to move one tile at a time. Reach the green strip at the top.",
+    getLevelText: () => `${crossings + 1}`,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "lives", label: "Lives 3" },
+          { id: "crossings", label: "Crossings 0" },
+          { id: "lane", label: "Rows 7" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = cols * cellSize;
+      shell.canvas.height = rows * cellSize;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Hop for it");
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (!running) return;
+      const key = event.key.toLowerCase();
+      if (["arrowleft", "a"].includes(key)) player.col = Math.max(0, player.col - 1);
+      if (["arrowright", "d"].includes(key)) player.col = Math.min(cols - 1, player.col + 1);
+      if (["arrowup", "w"].includes(key)) player.row = Math.max(0, player.row - 1);
+      if (["arrowdown", "s"].includes(key)) player.row = Math.min(rows - 1, player.row + 1);
+      if (player.row === 0) {
+        handleGoal();
+      }
+      draw();
+    },
+  };
+}
+
+function createLuckySlotsGame() {
+  let wrapper;
+  let credits = 30;
+  let bet = 3;
+  let lastWin = 0;
+  let spins = 0;
+  let round = 1;
+  let spinning = false;
+  let spinTimer = null;
+  let reels = ["STAR", "STAR", "STAR"];
+  const symbols = ["STAR", "7", "BAR", "ORB", "GEM", "ROCKET"];
+
+  function getSpinSpeed() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return 12;
+    if (mode === "hard") return 18;
+    return 15;
+  }
+
+  function getPayout(values) {
+    const counts = values.reduce((acc, value) => ({ ...acc, [value]: (acc[value] || 0) + 1 }), {});
+    const entries = Object.entries(counts).sort((left, right) => right[1] - left[1]);
+    const [symbol, count] = entries[0];
+    if (count === 3) {
+      const bonus = symbol === "7" ? 12 : symbol === "STAR" ? 9 : 7;
+      return bet * bonus;
+    }
+    if (count === 2) {
+      return bet * 2;
+    }
+    return 0;
+  }
+
+  function updateHud() {
+    wrapper.querySelector('[data-hud="credits"]').textContent = `Credits ${credits}`;
+    wrapper.querySelector('[data-hud="bet"]').textContent = `Bet ${bet}`;
+    wrapper.querySelector('[data-hud="last"]').textContent = `Last win ${lastWin}`;
+    refreshLevel();
+  }
+
+  function renderReels() {
+    wrapper.querySelector(".reel-row").innerHTML = reels
+      .map((symbol) => `<div class="slot-reel">${symbol}</div>`)
+      .join("");
+    wrapper.querySelector('[data-action="down"]').disabled = spinning || bet <= 1;
+    wrapper.querySelector('[data-action="up"]').disabled = spinning || bet >= Math.min(9, credits);
+    wrapper.querySelector('[data-action="spin"]').disabled = spinning || credits < bet;
+  }
+
+  function resetState() {
+    const mode = getDifficultyMode();
+    credits = mode === "easy" ? 38 : mode === "hard" ? 24 : 30;
+    bet = Math.min(3, credits);
+    lastWin = 0;
+    spins = 0;
+    round = 1;
+    spinning = false;
+    reels = ["STAR", "BAR", "ORB"];
+    if (spinTimer) clearInterval(spinTimer);
+    spinTimer = null;
+    renderReels();
+    setScore(0);
+    updateHud();
+  }
+
+  function finishSpin() {
+    spinning = false;
+    if (spinTimer) clearInterval(spinTimer);
+    spinTimer = null;
+    reels = Array.from({ length: 3 }, () => symbols[Math.floor(Math.random() * symbols.length)]);
+    lastWin = getPayout(reels);
+    credits += lastWin;
+    spins += 1;
+    round = 1 + Math.floor(spins / 4);
+    if (lastWin > 0) {
+      setScore(appState.score + lastWin * 2);
+      setStatus(`Jackpot vibes: +${lastWin}`);
+    } else {
+      setStatus("No luck that spin");
+    }
+    if (credits < 1) {
+      setStatus("Out of credits - auto reset");
+      scheduleAutoReset();
+    }
+    updateHud();
+    renderReels();
+  }
+
+  function spin() {
+    if (spinning || credits < bet) return;
+    credits -= bet;
+    lastWin = 0;
+    spinning = true;
+    let ticks = 0;
+    const maxTicks = getSpinSpeed();
+    renderReels();
+    updateHud();
+    setStatus("Spinning...");
+    spinTimer = window.setInterval(() => {
+      ticks += 1;
+      reels = reels.map(() => symbols[Math.floor(Math.random() * symbols.length)]);
+      renderReels();
+      if (ticks >= maxTicks) {
+        finishSpin();
+      }
+    }, 90);
+  }
+
+  return {
+    id: "slots",
+    title: "Lucky Slots",
+    tagline: "Three-reel casino chaos",
+    subtitle: "Raise your bet, chase triples, and see how long you can keep your credits alive.",
+    description:
+      "A solo slot machine game with adjustable bets, spinning reels, combo payouts, and a little arcade tension every time your credits dip.",
+    controls: "Use the bet buttons, then spin for matches. Triples pay the most.",
+    getLevelText: () => `${round}`,
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="slots-card">
+          <div class="info-chip-row">
+            <span class="info-chip" data-hud="credits">Credits 30</span>
+            <span class="info-chip" data-hud="bet">Bet 3</span>
+            <span class="info-chip" data-hud="last">Last win 0</span>
+          </div>
+          <div class="reel-row"></div>
+          <div class="action-button-grid">
+            <button class="mini-button" data-action="down">Bet -</button>
+            <button class="mini-button" data-action="up">Bet +</button>
+            <button class="primary-button" data-action="spin">Spin</button>
+          </div>
+          <p class="compact-copy">Three of a kind pays big. Two of a kind gives a small refund to keep the run alive.</p>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      wrapper.querySelector('[data-action="down"]').addEventListener("click", () => {
+        bet = Math.max(1, bet - 1);
+        updateHud();
+        renderReels();
+      });
+      wrapper.querySelector('[data-action="up"]').addEventListener("click", () => {
+        bet = Math.min(Math.max(1, credits), bet + 1);
+        updateHud();
+        renderReels();
+      });
+      wrapper.querySelector('[data-action="spin"]').addEventListener("click", spin);
+      resetState();
+    },
+    start() {
+      setStatus("Spin when ready");
+    },
+    reset() {
+      resetState();
+    },
+    destroy() {
+      if (spinTimer) clearInterval(spinTimer);
+      spinTimer = null;
+      spinning = false;
+    },
+  };
+}
+
+function createCodeBreakerGame() {
+  let wrapper;
+  let answer = [];
+  let currentGuess = [];
+  let guessesLeft = 8;
+  let solvedRound = 1;
+  const colors = ["Red", "Blue", "Green", "Gold", "Pink", "Cyan"];
+
+  function getGuessLimit() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return 10;
+    if (mode === "hard") return 7;
+    return 8;
+  }
+
+  function buildAnswer() {
+    answer = Array.from({ length: 4 }, () => colors[Math.floor(Math.random() * colors.length)]);
+  }
+
+  function updateHud() {
+    wrapper.querySelector('[data-hud="round"]').textContent = `Round ${solvedRound}`;
+    wrapper.querySelector('[data-hud="guesses"]').textContent = `Guesses ${guessesLeft}`;
+    wrapper.querySelector('[data-hud="pick"]').textContent = `Slots ${currentGuess.length}/4`;
+    refreshLevel();
+  }
+
+  function renderGuess() {
+    wrapper.querySelector(".code-current").innerHTML = Array.from({ length: 4 }, (_, index) => {
+      const color = currentGuess[index];
+      return `<div class="code-slot">${color ? `<span class="color-peg color-${color.toLowerCase()}">${color[0]}</span>` : "?"}</div>`;
+    }).join("");
+    wrapper.querySelector('[data-action="submit"]').disabled = currentGuess.length !== 4;
+    wrapper.querySelector('[data-action="back"]').disabled = currentGuess.length === 0;
+  }
+
+  function renderPalette() {
+    wrapper.querySelector(".code-palette").innerHTML = colors
+      .map(
+        (color) =>
+          `<button class="mini-button color-choice color-${color.toLowerCase()}" data-color="${color}">${color}</button>`,
+      )
+      .join("");
+    wrapper.querySelectorAll("[data-color]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (currentGuess.length >= 4) return;
+        currentGuess.push(button.dataset.color);
+        renderGuess();
+        updateHud();
+      });
+    });
+  }
+
+  function scoreGuess(guess) {
+    const answerCopy = [...answer];
+    const guessCopy = [...guess];
+    let exact = 0;
+    let partial = 0;
+
+    for (let index = 0; index < guessCopy.length; index += 1) {
+      if (guessCopy[index] === answerCopy[index]) {
+        exact += 1;
+        answerCopy[index] = null;
+        guessCopy[index] = null;
+      }
+    }
+
+    guessCopy.forEach((value) => {
+      if (!value) return;
+      const matchIndex = answerCopy.indexOf(value);
+      if (matchIndex >= 0) {
+        partial += 1;
+        answerCopy[matchIndex] = null;
+      }
+    });
+
+    return { exact, partial };
+  }
+
+  function resetRound() {
+    currentGuess = [];
+    guessesLeft = getGuessLimit();
+    buildAnswer();
+    wrapper.querySelector(".code-history").innerHTML = "";
+    renderGuess();
+    renderPalette();
+    updateHud();
+  }
+
+  function submitGuess() {
+    if (currentGuess.length !== 4) return;
+    guessesLeft -= 1;
+    const result = scoreGuess(currentGuess);
+    const history = wrapper.querySelector(".code-history");
+    history.insertAdjacentHTML(
+      "afterbegin",
+      `<div class="guess-row">
+        <div class="guess-pegs">${currentGuess
+          .map((color) => `<span class="color-peg color-${color.toLowerCase()}">${color[0]}</span>`)
+          .join("")}</div>
+        <div class="guess-feedback">Exact ${result.exact} • Near ${result.partial}</div>
+      </div>`,
+    );
+    if (result.exact === 4) {
+      setScore(appState.score + 30 + solvedRound * 6);
+      solvedRound += 1;
+      setStatus("Code cracked");
+      resetRound();
+      return;
+    }
+    if (guessesLeft <= 0) {
+      wrapper.querySelector(".code-history").insertAdjacentHTML(
+        "afterbegin",
+        `<div class="guess-row"><div class="guess-feedback">Answer: ${answer.join(" / ")}</div></div>`,
+      );
+      setStatus("Vault locked you out - auto reset");
+      scheduleAutoReset();
+    } else {
+      setStatus(`Exact ${result.exact}, near ${result.partial}`);
+    }
+    currentGuess = [];
+    renderGuess();
+    updateHud();
+  }
+
+  return {
+    id: "code",
+    title: "Code Cracker",
+    tagline: "Mastermind-style color puzzle",
+    subtitle: "Guess the hidden four-color code before you run out of tries.",
+    description:
+      "A deduction puzzle where you build a four-color guess, read the exact and near-match clues, and crack increasingly many codes.",
+    controls: "Choose four colors, submit the guess, and use the feedback to narrow down the answer.",
+    getLevelText: () => `${solvedRound}`,
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="code-card">
+          <div class="info-chip-row">
+            <span class="info-chip" data-hud="round">Round 1</span>
+            <span class="info-chip" data-hud="guesses">Guesses 8</span>
+            <span class="info-chip" data-hud="pick">Slots 0/4</span>
+          </div>
+          <div class="code-current"></div>
+          <div class="code-palette"></div>
+          <div class="action-button-grid">
+            <button class="secondary-button" data-action="back">Backspace</button>
+            <button class="primary-button" data-action="submit">Submit guess</button>
+          </div>
+          <div class="code-history"></div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      wrapper.querySelector('[data-action="back"]').addEventListener("click", () => {
+        currentGuess.pop();
+        renderGuess();
+        updateHud();
+      });
+      wrapper.querySelector('[data-action="submit"]').addEventListener("click", submitGuess);
+      resetRound();
+    },
+    start() {
+      setStatus("Crack the pattern");
+    },
+    reset() {
+      solvedRound = 1;
+      resetRound();
+    },
+    destroy() {},
+  };
+}
+
 function createTowerTacticsGame() {
   let wrapper;
   let shell;
@@ -6801,78 +7437,211 @@ function createTowerTacticsGame() {
   let towers = [];
   let enemies = [];
   let selectedTowerType = "pea";
-  let lives = 10;
-  let cash = 16;
+  let selectedTowerId = null;
+  let lives = 14;
+  let cash = 26;
   let wave = 1;
   let waveTotal = 0;
   let spawnedThisWave = 0;
   let spawnTimer = 0;
   let preWaveCountdown = 0;
   let buildingPads = [];
+  const canvasWidth = 960;
+  const canvasHeight = 520;
 
   const path = [
-    { x: 0, y: 110 },
-    { x: 180, y: 110 },
-    { x: 180, y: 260 },
-    { x: 430, y: 260 },
-    { x: 430, y: 150 },
-    { x: 760, y: 150 },
+    { x: 0, y: 118 },
+    { x: 126, y: 118 },
+    { x: 126, y: 390 },
+    { x: 282, y: 390 },
+    { x: 282, y: 86 },
+    { x: 452, y: 86 },
+    { x: 452, y: 304 },
+    { x: 628, y: 304 },
+    { x: 628, y: 154 },
+    { x: 784, y: 154 },
+    { x: 784, y: 420 },
+    { x: 908, y: 420 },
+    { x: 908, y: 240 },
+    { x: 960, y: 240 },
   ];
 
   function getTowerCatalog() {
     return {
-      pea: { label: "Pea Tower", cost: 7, range: 110, reload: 32, damage: 1, color: "#46b1ff" },
-      frost: { label: "Frost Tower", cost: 10, range: 95, reload: 42, damage: 1, slow: 0.55, slowTicks: 55, color: "#8f66ff" },
+      pea: {
+        label: "Pea Tower",
+        cost: 7,
+        range: 118,
+        reload: 24,
+        damage: 1,
+        color: "#46b1ff",
+        accent: "#b9e6ff",
+      },
+      frost: {
+        label: "Frost Tower",
+        cost: 11,
+        range: 105,
+        reload: 34,
+        damage: 1,
+        slow: 0.62,
+        slowTicks: 60,
+        color: "#8f66ff",
+        accent: "#ddd0ff",
+      },
+      cannon: {
+        label: "Cannon",
+        cost: 15,
+        range: 132,
+        reload: 44,
+        damage: 2,
+        splash: 52,
+        color: "#ff8a3d",
+        accent: "#ffd8ba",
+      },
+      beam: {
+        label: "Beam Tower",
+        cost: 19,
+        range: 150,
+        reload: 16,
+        damage: 1,
+        pierce: 2,
+        color: "#7ef0bb",
+        accent: "#d6fff0",
+      },
+      volt: {
+        label: "Volt Tower",
+        cost: 24,
+        range: 138,
+        reload: 28,
+        damage: 1,
+        chain: 2,
+        color: "#ffd166",
+        accent: "#fff2b2",
+      },
     };
   }
 
   function getWaveConfig(level) {
     const mode = getDifficultyMode();
-    const baseCount = mode === "easy" ? 7 : mode === "hard" ? 10 : 8;
-    const spawnGap = mode === "easy" ? 42 : mode === "hard" ? 28 : 34;
-    const speedBase = mode === "easy" ? 1.05 : mode === "hard" ? 1.45 : 1.22;
+    const difficultyMap = {
+      chill: { count: 8, spawnGap: 37, speed: 1.02, hp: 3, reward: 2 },
+      easy: { count: 10, spawnGap: 33, speed: 1.12, hp: 3, reward: 2 },
+      normal: { count: 12, spawnGap: 30, speed: 1.24, hp: 4, reward: 3 },
+      hard: { count: 14, spawnGap: 27, speed: 1.38, hp: 4, reward: 3 },
+      chaos: { count: 16, spawnGap: 24, speed: 1.56, hp: 5, reward: 4 },
+    };
+    const profile = difficultyMap[mode] || difficultyMap.normal;
+    const bossWave = level % 5 === 0;
     return {
-      count: baseCount + (level - 1) * 2,
-      spawnGap: Math.max(14, spawnGap - Math.floor((level - 1) / 2)),
-      speed: speedBase + (level - 1) * 0.09,
-      hp: 2 + Math.floor((level - 1) / 2),
-      reward: 2 + Math.floor((level - 1) / 3),
+      count: profile.count + (level - 1) * 2 + (bossWave ? 2 : 0),
+      spawnGap: Math.max(12, profile.spawnGap - Math.floor((level - 1) / 2)),
+      speed: profile.speed + (level - 1) * 0.1,
+      hp: profile.hp + Math.floor((level - 1) / 2) + (bossWave ? 3 : 0),
+      reward: profile.reward + Math.floor((level - 1) / 3) + (bossWave ? 2 : 0),
     };
   }
 
   function buildPads() {
     buildingPads = [
-      { x: 110, y: 55, towerId: null },
-      { x: 280, y: 185, towerId: null },
-      { x: 330, y: 330, towerId: null },
-      { x: 520, y: 320, towerId: null },
-      { x: 585, y: 85, towerId: null },
-      { x: 680, y: 255, towerId: null },
+      { x: 76, y: 52, towerId: null },
+      { x: 208, y: 62, towerId: null },
+      { x: 218, y: 218, towerId: null },
+      { x: 84, y: 452, towerId: null },
+      { x: 246, y: 472, towerId: null },
+      { x: 358, y: 212, towerId: null },
+      { x: 382, y: 36, towerId: null },
+      { x: 516, y: 162, towerId: null },
+      { x: 532, y: 378, towerId: null },
+      { x: 658, y: 244, towerId: null },
+      { x: 690, y: 78, towerId: null },
+      { x: 742, y: 500 - 68, towerId: null },
+      { x: 846, y: 324, towerId: null },
+      { x: 858, y: 110, towerId: null },
+      { x: 930, y: 470, towerId: null },
+      { x: 930, y: 176, towerId: null },
+      { x: 610, y: 454, towerId: null },
     ];
   }
 
   function updateHud() {
+    const selectedTower = towers.find((tower) => tower.id === selectedTowerId);
     shell.hud.lives.textContent = `Lives ${lives}`;
     shell.hud.cash.textContent = `Cash ${cash}`;
     shell.hud.wave.textContent = `Wave ${wave}`;
-    shell.hud.towers.textContent = `Towers ${towers.length}`;
+    shell.hud.towers.textContent = `Towers ${towers.length}/${buildingPads.length}`;
+    shell.hud.selected.textContent = selectedTower
+      ? `${getTowerCatalog()[selectedTower.type].label} Lv${selectedTower.level}`
+      : `Build ${getTowerCatalog()[selectedTowerType].label}`;
     refreshLevel();
+  }
+
+  function getSelectedTower() {
+    return towers.find((tower) => tower.id === selectedTowerId) || null;
+  }
+
+  function getUpgradeCosts(tower) {
+    return {
+      power: 5 + tower.level * 3,
+      range: 4 + tower.rangeLevel * 3,
+      speed: 5 + tower.speedLevel * 3,
+      tech: 7 + tower.techLevel * 4,
+      sell: Math.max(4, Math.floor(tower.spent * 0.65)),
+    };
   }
 
   function renderControls() {
     if (!wrapper) return;
     const catalog = getTowerCatalog();
+    const selectedTower = getSelectedTower();
+    const costs = selectedTower ? getUpgradeCosts(selectedTower) : null;
     wrapper.querySelector(".action-button-grid").innerHTML = `
-      <button class="mini-button ${selectedTowerType === "pea" ? "selected-build" : ""}" data-build="pea">${catalog.pea.label} ${catalog.pea.cost}</button>
-      <button class="mini-button ${selectedTowerType === "frost" ? "selected-build" : ""}" data-build="frost">${catalog.frost.label} ${catalog.frost.cost}</button>
+      <div class="tower-panel">
+        <div class="info-chip-row">
+          <span class="info-chip">Build: ${catalog[selectedTowerType].label}</span>
+          <span class="info-chip">${selectedTower ? `Selected: ${catalog[selectedTower.type].label} Lv${selectedTower.level}` : "Selected: none"}</span>
+          <span class="info-chip">${selectedTower ? `Damage ${selectedTower.damage}` : "Click a pad to build"}</span>
+          <span class="info-chip">${selectedTower ? `Range ${selectedTower.range}` : "Click a tower to upgrade"}</span>
+        </div>
+        <div class="action-button-grid">
+          <button class="mini-button ${selectedTowerType === "pea" ? "selected-build" : ""}" data-build="pea">${catalog.pea.label} ${catalog.pea.cost}</button>
+          <button class="mini-button ${selectedTowerType === "frost" ? "selected-build" : ""}" data-build="frost">${catalog.frost.label} ${catalog.frost.cost}</button>
+          <button class="mini-button ${selectedTowerType === "cannon" ? "selected-build" : ""}" data-build="cannon">${catalog.cannon.label} ${catalog.cannon.cost}</button>
+          <button class="mini-button ${selectedTowerType === "beam" ? "selected-build" : ""}" data-build="beam">${catalog.beam.label} ${catalog.beam.cost}</button>
+          <button class="mini-button ${selectedTowerType === "volt" ? "selected-build" : ""}" data-build="volt">${catalog.volt.label} ${catalog.volt.cost}</button>
+        </div>
+        <div class="action-button-grid">
+          <button class="mini-button" data-upgrade="power" ${selectedTower ? "" : "disabled"}>Power ${costs ? costs.power : "--"}</button>
+          <button class="mini-button" data-upgrade="range" ${selectedTower ? "" : "disabled"}>Range ${costs ? costs.range : "--"}</button>
+          <button class="mini-button" data-upgrade="speed" ${selectedTower ? "" : "disabled"}>Reload ${costs ? costs.speed : "--"}</button>
+          <button class="mini-button" data-upgrade="tech" ${selectedTower ? "" : "disabled"}>Tech ${costs ? costs.tech : "--"}</button>
+          <button class="mini-button" data-upgrade="sell" ${selectedTower ? "" : "disabled"}>Sell ${costs ? costs.sell : "--"}</button>
+          <button class="mini-button" data-clear-selection ${selectedTower ? "" : "disabled"}>Clear Focus</button>
+        </div>
+        <div class="tower-note">Pea is cheap, Frost slows, Cannon splashes, Beam pierces, and Volt jumps between clustered enemies. Tech upgrades boost each tower's unique trait.</div>
+      </div>
     `;
     wrapper.querySelectorAll("[data-build]").forEach((button) => {
       button.addEventListener("click", () => {
         selectedTowerType = button.dataset.build;
+        selectedTowerId = null;
         renderControls();
         setStatus(`${getTowerCatalog()[selectedTowerType].label} selected`);
       });
     });
+    wrapper.querySelectorAll("[data-upgrade]").forEach((button) => {
+      button.addEventListener("click", () => {
+        upgradeTower(button.dataset.upgrade);
+      });
+    });
+    const clearButton = wrapper.querySelector("[data-clear-selection]");
+    if (clearButton) {
+      clearButton.addEventListener("click", () => {
+        selectedTowerId = null;
+        renderControls();
+        updateHud();
+        setStatus(`${getTowerCatalog()[selectedTowerType].label} selected`);
+      });
+    }
   }
 
   function setEnemyPosition(enemy) {
@@ -6889,17 +7658,68 @@ function createTowerTacticsGame() {
 
   function spawnEnemy() {
     const config = getWaveConfig(wave);
+    const bossWave = wave % 5 === 0;
+    const spawnIndex = spawnedThisWave + 1;
+    let variant = {
+      kind: "grunt",
+      speed: 0,
+      hp: 0,
+      reward: 0,
+      size: 13,
+      color: "#ff8a3d",
+    };
+    if (bossWave && spawnIndex === config.count) {
+      variant = {
+        kind: "boss",
+        speed: -0.12,
+        hp: 10 + wave,
+        reward: 8 + Math.floor(wave / 2),
+        size: 20,
+        color: "#ffd166",
+      };
+    } else if (spawnIndex % 6 === 0) {
+      variant = {
+        kind: "tank",
+        speed: -0.2,
+        hp: 4 + Math.floor(wave / 3),
+        reward: 3,
+        size: 16,
+        color: "#ff6b6b",
+      };
+    } else if (spawnIndex % 4 === 0) {
+      variant = {
+        kind: "runner",
+        speed: 0.42,
+        hp: -1,
+        reward: 1,
+        size: 10,
+        color: "#7ef0bb",
+      };
+    } else if (spawnIndex % 7 === 0) {
+      variant = {
+        kind: "ghost",
+        speed: 0.3,
+        hp: 0,
+        reward: 2,
+        size: 12,
+        color: "#c3a6ff",
+      };
+    }
     const enemy = {
       pathIndex: 0,
       segmentProgress: 0,
       x: path[0].x,
       y: path[0].y,
-      baseSpeed: config.speed + Math.random() * 0.12,
-      hp: config.hp,
-      maxHp: config.hp,
-      reward: config.reward,
+      kind: variant.kind,
+      baseSpeed: Math.max(0.76, config.speed + variant.speed + Math.random() * 0.14),
+      hp: Math.max(1, config.hp + variant.hp),
+      maxHp: Math.max(1, config.hp + variant.hp),
+      reward: Math.max(1, config.reward + variant.reward),
+      size: variant.size,
+      color: variant.color,
       slowFactor: 1,
       slowTicks: 0,
+      shield: variant.kind === "tank" ? 1 : 0,
     };
     setEnemyPosition(enemy);
     enemies.push(enemy);
@@ -6908,14 +7728,15 @@ function createTowerTacticsGame() {
   function resetState() {
     towers = [];
     enemies = [];
-    lives = 10;
-    cash = 16;
+    lives = 14;
+    cash = 26;
     wave = 1;
     waveTotal = getWaveConfig(1).count;
     spawnedThisWave = 0;
     spawnTimer = 0;
-    preWaveCountdown = 90;
+    preWaveCountdown = 75;
     selectedTowerType = "pea";
+    selectedTowerId = null;
     running = false;
     buildPads();
     setScore(0);
@@ -6926,7 +7747,17 @@ function createTowerTacticsGame() {
 
   function placeTower(index) {
     const pad = buildingPads[index];
-    if (!pad || pad.towerId != null) return;
+    if (!pad) return;
+    if (pad.towerId != null) {
+      selectedTowerId = pad.towerId;
+      updateHud();
+      renderControls();
+      const tower = getSelectedTower();
+      if (tower) {
+        setStatus(`${getTowerCatalog()[tower.type].label} ready for upgrades`);
+      }
+      return;
+    }
     const towerType = getTowerCatalog()[selectedTowerType];
     if (cash < towerType.cost) {
       setStatus(`Need ${towerType.cost} cash`);
@@ -6939,12 +7770,82 @@ function createTowerTacticsGame() {
       x: pad.x,
       y: pad.y,
       cooldown: 0,
+      level: 1,
+      damage: towerType.damage,
+      range: towerType.range,
+      reload: towerType.reload,
+      splashRadius: towerType.splash || 0,
+      pierce: towerType.pierce || 0,
+      chain: towerType.chain || 0,
+      slowFactor: towerType.slow || 1,
+      slowTicks: towerType.slowTicks || 0,
+      rangeLevel: 0,
+      speedLevel: 0,
+      techLevel: 0,
+      spent: towerType.cost,
     };
     towers.push(tower);
     pad.towerId = tower.id;
+    selectedTowerId = tower.id;
     updateHud();
     renderControls();
     setStatus(`${towerType.label} built`);
+  }
+
+  function upgradeTower(kind) {
+    const tower = getSelectedTower();
+    if (!tower) {
+      setStatus("Select a tower first");
+      return;
+    }
+    const costs = getUpgradeCosts(tower);
+    if (kind === "sell") {
+      cash += costs.sell;
+      towers = towers.filter((item) => item.id !== tower.id);
+      const pad = buildingPads.find((item) => item.towerId === tower.id);
+      if (pad) pad.towerId = null;
+      selectedTowerId = null;
+      updateHud();
+      renderControls();
+      setStatus("Tower sold");
+      return;
+    }
+    const cost = costs[kind];
+    if (cash < cost) {
+      setStatus(`Need ${cost} cash`);
+      return;
+    }
+    cash -= cost;
+    tower.level += 1;
+    tower.spent += cost;
+    if (kind === "power") {
+      tower.damage += 1;
+    } else if (kind === "range") {
+      tower.range += 18;
+      tower.rangeLevel += 1;
+    } else if (kind === "speed") {
+      tower.reload = Math.max(8, tower.reload - 4);
+      tower.speedLevel += 1;
+    } else if (kind === "tech") {
+      tower.techLevel += 1;
+      if (tower.type === "pea") {
+        tower.pierce += 1;
+      } else if (tower.type === "frost") {
+        tower.slowTicks += 18;
+        tower.slowFactor = Math.max(0.35, tower.slowFactor - 0.05);
+      } else if (tower.type === "cannon") {
+        tower.splashRadius += 16;
+      } else if (tower.type === "beam") {
+        tower.pierce += 1;
+        tower.damage += 1;
+      } else if (tower.type === "volt") {
+        tower.chain += 1;
+        tower.range += 10;
+      }
+    }
+    updateHud();
+    renderControls();
+    setStatus(`${getTowerCatalog()[tower.type].label} upgraded`);
   }
 
   function moveEnemies() {
@@ -6988,18 +7889,46 @@ function createTowerTacticsGame() {
       tower.cooldown = Math.max(0, tower.cooldown - 1);
       if (tower.cooldown > 0) return;
       const stats = catalog[tower.type];
-      const target = enemies.find((enemy) => Math.hypot(enemy.x - tower.x, enemy.y - tower.y) <= stats.range);
+      const targets = enemies
+        .filter((enemy) => Math.hypot(enemy.x - tower.x, enemy.y - tower.y) <= tower.range)
+        .sort((left, right) => {
+          const leftProgress = left.pathIndex + left.segmentProgress;
+          const rightProgress = right.pathIndex + right.segmentProgress;
+          return rightProgress - leftProgress;
+        });
+      const target = targets[0];
       if (!target) return;
-      target.hp -= stats.damage;
-      if (stats.slow) {
-        target.slowFactor = stats.slow;
-        target.slowTicks = stats.slowTicks;
+      const affected = [target];
+      const extraTargets = Math.max(tower.pierce || 0, tower.chain || 0);
+      if (extraTargets) {
+        affected.push(...targets.slice(1, 1 + extraTargets));
       }
-      tower.cooldown = stats.reload;
-      if (target.hp <= 0) {
-        enemies = enemies.filter((enemy) => enemy !== target);
-        cash += target.reward;
-        setScore(appState.score + 8 + wave);
+      affected.forEach((enemy) => {
+        const shieldedDamage = Math.max(1, tower.damage - (enemy.shield || 0));
+        enemy.hp -= shieldedDamage;
+        if (tower.slowFactor < 1) {
+          enemy.slowFactor = tower.slowFactor;
+          enemy.slowTicks = tower.slowTicks;
+        }
+        if (tower.splashRadius) {
+          enemies.forEach((splashEnemy) => {
+            if (splashEnemy === enemy) return;
+            if (Math.hypot(splashEnemy.x - enemy.x, splashEnemy.y - enemy.y) <= tower.splashRadius) {
+              splashEnemy.hp -= Math.max(1, tower.damage - 1);
+            }
+          });
+        }
+      });
+      tower.cooldown = tower.reload;
+      let kills = 0;
+      enemies = enemies.filter((enemy) => {
+        if (enemy.hp > 0) return true;
+        cash += enemy.reward;
+        kills += 1;
+        return false;
+      });
+      if (kills > 0) {
+        setScore(appState.score + kills * (9 + wave));
         updateHud();
         renderControls();
       }
@@ -7026,11 +7955,11 @@ function createTowerTacticsGame() {
       return;
     }
     if (enemies.length === 0) {
-      cash += 4 + Math.floor(wave / 2);
+      cash += 7 + Math.floor(wave * 0.75);
       wave += 1;
       spawnedThisWave = 0;
       spawnTimer = 0;
-      preWaveCountdown = 75;
+      preWaveCountdown = 60;
       updateHud();
       renderControls();
       setStatus(`Build up for wave ${wave}`);
@@ -7060,9 +7989,10 @@ function createTowerTacticsGame() {
 
   function drawPads() {
     buildingPads.forEach((pad, index) => {
+      const isSelected = pad.towerId && pad.towerId === selectedTowerId;
       ctx.fillStyle = pad.towerId ? "rgba(30, 185, 128, 0.22)" : "rgba(255,255,255,0.08)";
       ctx.strokeStyle = selectedTowerType && !pad.towerId ? "rgba(255, 138, 61, 0.5)" : "rgba(255,255,255,0.14)";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = isSelected ? 4 : 2;
       ctx.beginPath();
       ctx.arc(pad.x, pad.y, 24, 0, Math.PI * 2);
       ctx.fill();
@@ -7080,35 +8010,48 @@ function createTowerTacticsGame() {
     const catalog = getTowerCatalog();
     towers.forEach((tower) => {
       const stats = catalog[tower.type];
+      if (tower.id === selectedTowerId) {
+        ctx.strokeStyle = "rgba(255,255,255,0.65)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(tower.x, tower.y, tower.range, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.fillStyle = stats.color;
       ctx.beginPath();
       ctx.arc(tower.x, tower.y, 18, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = stats.accent;
+      ctx.beginPath();
+      ctx.arc(tower.x, tower.y, 7, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = "#08111f";
-      ctx.fillRect(tower.x - 4, tower.y - 18, 8, 18);
+      ctx.font = "700 11px Trebuchet MS";
+      ctx.textAlign = "center";
+      ctx.fillText(String(tower.level), tower.x, tower.y + 4);
     });
   }
 
   function drawEnemies() {
     enemies.forEach((enemy) => {
-      ctx.fillStyle = enemy.slowFactor < 1 ? "#8f66ff" : "#ff8a3d";
+      ctx.fillStyle = enemy.slowFactor < 1 ? "#8f66ff" : enemy.color;
       ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, 13, 0, Math.PI * 2);
+      ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "rgba(8,17,31,0.32)";
-      ctx.fillRect(enemy.x - 16, enemy.y - 22, 32, 5);
+      ctx.fillRect(enemy.x - 16, enemy.y - enemy.size - 9, 32, 5);
       ctx.fillStyle = "#7ef0bb";
-      ctx.fillRect(enemy.x - 16, enemy.y - 22, 32 * (enemy.hp / enemy.maxHp), 5);
+      ctx.fillRect(enemy.x - 16, enemy.y - enemy.size - 9, 32 * (enemy.hp / enemy.maxHp), 5);
     });
   }
 
   function draw() {
-    ctx.clearRect(0, 0, 760, 440);
-    const bg = ctx.createLinearGradient(0, 0, 0, 440);
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    const bg = ctx.createLinearGradient(0, 0, 0, canvasHeight);
     bg.addColorStop(0, "#08111f");
     bg.addColorStop(1, "#13365b");
     ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, 760, 440);
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     drawPath();
     drawPads();
     drawTowers();
@@ -7116,20 +8059,20 @@ function createTowerTacticsGame() {
 
     if (!running) {
       ctx.fillStyle = "rgba(0,0,0,0.3)";
-      ctx.fillRect(0, 0, 760, 440);
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
       ctx.font = "700 34px Trebuchet MS";
-      ctx.fillText("Tower Tactics", 380, 206);
+      ctx.fillText("Tower Tactics", canvasWidth / 2, 230);
       ctx.font = "22px Trebuchet MS";
-      ctx.fillText("Build towers on pads and stop the wave", 380, 244);
+      ctx.fillText("Build, upgrade, and survive the long rush", canvasWidth / 2, 268);
     } else if (preWaveCountdown > 0) {
       ctx.fillStyle = "rgba(0,0,0,0.2)";
-      ctx.fillRect(0, 0, 760, 440);
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
       ctx.font = "700 28px Trebuchet MS";
-      ctx.fillText(`Wave ${wave} in ${Math.ceil(preWaveCountdown / 30)}`, 380, 220);
+      ctx.fillText(`Wave ${wave} in ${Math.ceil(preWaveCountdown / 30)}`, canvasWidth / 2, canvasHeight / 2);
     }
   }
 
@@ -7160,11 +8103,11 @@ function createTowerTacticsGame() {
     id: "tower",
     getLevelText: () => `Wave ${wave}`,
     title: "Tower Tactics",
-    tagline: "Mini tower defense lane hold",
-    subtitle: "Build towers on pads, earn cash, and stop each wave before the base falls.",
+    tagline: "Tower defense with upgrades and harder waves",
+    subtitle: "Build across a longer map, focus towers for upgrades, and stop mixed enemy waves before the base falls.",
     description:
-      "A compact tower defense game with two tower types, build pads, scaling waves, and a simple upgrade-free survival loop.",
-    controls: "Click a tower button, then click a numbered pad to build there.",
+      "A fuller tower defense game with five tower types, a longer route, many more build pads, tower upgrades, mixed enemy types, and boss waves.",
+    controls: "Choose a tower, click an empty pad to build, then click occupied pads to upgrade, sell, or tech it up.",
     mount(stage) {
       stage.innerHTML = "";
       wrapper = createDomShell(`
@@ -7172,10 +8115,11 @@ function createTowerTacticsGame() {
           <div class="canvas-wrap">
             <div class="canvas-hud">
               <div class="info-chip-row">
-                <span class="info-chip" data-hud="lives">Lives 10</span>
-                <span class="info-chip" data-hud="cash">Cash 16</span>
+                <span class="info-chip" data-hud="lives">Lives 14</span>
+                <span class="info-chip" data-hud="cash">Cash 26</span>
                 <span class="info-chip" data-hud="wave">Wave 1</span>
                 <span class="info-chip" data-hud="towers">Towers 0</span>
+                <span class="info-chip" data-hud="selected">Build Pea Tower</span>
               </div>
             </div>
             <div class="canvas-card">
@@ -7194,10 +8138,11 @@ function createTowerTacticsGame() {
           cash: wrapper.querySelector('[data-hud="cash"]'),
           wave: wrapper.querySelector('[data-hud="wave"]'),
           towers: wrapper.querySelector('[data-hud="towers"]'),
+          selected: wrapper.querySelector('[data-hud="selected"]'),
         },
       };
-      shell.canvas.width = 760;
-      shell.canvas.height = 440;
+      shell.canvas.width = canvasWidth;
+      shell.canvas.height = canvasHeight;
       ctx = shell.canvas.getContext("2d");
       shell.canvas.addEventListener("click", handleCanvasClick);
       resetState();

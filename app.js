@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260406j";
+const BUILD_VERSION = "20260406r";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -1804,36 +1804,118 @@ function createRocketLanderGame() {
   let terrain = [];
   let landingPad = { x: 0, y: 0, width: 100 };
   let keys = { left: false, right: false, thrust: false };
+  const stageProfiles = [
+    { padIndex: 3, roughness: 36, minY: 350, maxY: 438, startX: 138, startY: 86 },
+    { padIndex: 5, roughness: 42, minY: 336, maxY: 438, startX: 126, startY: 82 },
+    { padIndex: 4, roughness: 48, minY: 330, maxY: 432, startX: 154, startY: 88 },
+    { padIndex: 6, roughness: 54, minY: 324, maxY: 430, startX: 112, startY: 76 },
+    { padIndex: 3, roughness: 58, minY: 318, maxY: 428, startX: 164, startY: 94 },
+    { padIndex: 5, roughness: 62, minY: 312, maxY: 426, startX: 128, startY: 72 },
+    { padIndex: 4, roughness: 68, minY: 306, maxY: 424, startX: 146, startY: 82 },
+    { padIndex: 6, roughness: 72, minY: 302, maxY: 422, startX: 118, startY: 70 },
+    { padIndex: 3, roughness: 76, minY: 298, maxY: 420, startX: 170, startY: 84 },
+    { padIndex: 5, roughness: 82, minY: 294, maxY: 418, startX: 124, startY: 68 },
+    { padIndex: 4, roughness: 86, minY: 290, maxY: 416, startX: 156, startY: 78 },
+    { padIndex: 6, roughness: 92, minY: 286, maxY: 414, startX: 116, startY: 64 },
+  ];
 
   function getConfig() {
-    const mode = getDifficultyMode();
-    if (mode === "easy") return { fuel: 140, gravity: 0.055, padWidth: 116 };
-    if (mode === "hard") return { fuel: 92, gravity: 0.076, padWidth: 84 };
-    return { fuel: 112, gravity: 0.064, padWidth: 98 };
+    if (appState.difficulty === "chill") {
+      return {
+        fuel: Infinity,
+        infiniteFuel: true,
+        gravity: 0.047,
+        padWidth: 138,
+        minPadWidth: 110,
+        gentleVy: 2.3,
+        gentleVx: 1.35,
+        upright: 0.28,
+        thrustPower: 0.132,
+        rotateStep: 0.024,
+      };
+    }
+    if (appState.difficulty === "easy") {
+      return {
+        fuel: 180,
+        infiniteFuel: false,
+        gravity: 0.052,
+        padWidth: 124,
+        minPadWidth: 98,
+        gentleVy: 2.15,
+        gentleVx: 1.24,
+        upright: 0.24,
+        thrustPower: 0.126,
+        rotateStep: 0.026,
+      };
+    }
+    if (appState.difficulty === "hard") {
+      return {
+        fuel: 104,
+        infiniteFuel: false,
+        gravity: 0.07,
+        padWidth: 92,
+        minPadWidth: 72,
+        gentleVy: 1.72,
+        gentleVx: 1.02,
+        upright: 0.17,
+        thrustPower: 0.116,
+        rotateStep: 0.031,
+      };
+    }
+    if (appState.difficulty === "chaos") {
+      return {
+        fuel: 88,
+        infiniteFuel: false,
+        gravity: 0.077,
+        padWidth: 82,
+        minPadWidth: 64,
+        gentleVy: 1.58,
+        gentleVx: 0.96,
+        upright: 0.14,
+        thrustPower: 0.112,
+        rotateStep: 0.034,
+      };
+    }
+    return {
+      fuel: 136,
+      infiniteFuel: false,
+      gravity: 0.06,
+      padWidth: 106,
+      minPadWidth: 82,
+      gentleVy: 1.9,
+      gentleVx: 1.12,
+      upright: 0.2,
+      thrustPower: 0.12,
+      rotateStep: 0.028,
+    };
   }
 
   function updateHud() {
     shell.hud.stage.textContent = `Stage ${stageLevel}`;
-    shell.hud.fuel.textContent = `Fuel ${Math.max(0, Math.floor(ship.fuel))}`;
+    shell.hud.fuel.textContent = getConfig().infiniteFuel
+      ? "Fuel Inf"
+      : `Fuel ${Math.max(0, Math.floor(ship.fuel))}`;
     shell.hud.speed.textContent = `Speed ${ship ? Math.abs(ship.vy).toFixed(2) : "0.00"}`;
     refreshLevel();
   }
 
   function generateTerrain(level) {
+    const profile = stageProfiles[(level - 1) % stageProfiles.length];
     const points = [];
     let x = 0;
-    let y = 420;
+    let y = 408;
     while (x <= 900) {
       points.push({ x, y });
       x += 90;
-      y = clamp(y + (Math.random() * 120 - 60), 280, 500);
+      const stageRoughness = profile.roughness + Math.min(24, Math.floor((level - 1) / stageProfiles.length) * 8);
+      y = clamp(y + (Math.random() * stageRoughness * 2 - stageRoughness), profile.minY, profile.maxY);
     }
     const config = getConfig();
-    const padIndex = 4 + (level % 4);
+    const padIndex = Math.min(points.length - 2, profile.padIndex);
     landingPad = {
       x: points[padIndex].x + 8,
       y: clamp(points[padIndex].y - 10, 300, 470),
-      width: Math.max(68, config.padWidth - Math.floor((level - 1) / 2) * 4),
+      width: Math.max(config.minPadWidth, config.padWidth - Math.floor((level - 1) / 2) * 3),
     };
     points[padIndex].y = landingPad.y + 10;
     points[padIndex + 1].y = landingPad.y + 10;
@@ -1845,8 +1927,8 @@ function createRocketLanderGame() {
     stageLevel = level;
     generateTerrain(level);
     ship = {
-      x: 120,
-      y: 80,
+      x: stageProfiles[(level - 1) % stageProfiles.length].startX,
+      y: stageProfiles[(level - 1) % stageProfiles.length].startY,
       vx: 0,
       vy: 0,
       angle: 0,
@@ -1895,12 +1977,12 @@ function createRocketLanderGame() {
   function update() {
     if (!running) return;
     const config = getConfig();
-    if (keys.left) ship.angle = Math.max(-0.8, ship.angle - 0.03);
-    if (keys.right) ship.angle = Math.min(0.8, ship.angle + 0.03);
-    if (keys.thrust && ship.fuel > 0) {
+    if (keys.left) ship.angle = Math.max(-0.8, ship.angle - config.rotateStep);
+    if (keys.right) ship.angle = Math.min(0.8, ship.angle + config.rotateStep);
+    if (keys.thrust && (config.infiniteFuel || ship.fuel > 0)) {
       ship.vx += Math.sin(ship.angle) * 0.07;
-      ship.vy -= Math.cos(ship.angle) * 0.12;
-      ship.fuel -= 0.6;
+      ship.vy -= Math.cos(ship.angle) * config.thrustPower;
+      if (!config.infiniteFuel) ship.fuel -= 0.52;
     }
     ship.vy += config.gravity;
     ship.x += ship.vx;
@@ -1910,8 +1992,8 @@ function createRocketLanderGame() {
     const groundY = getGroundY(ship.x);
     if (ship.y + 18 >= groundY) {
       const onPad = ship.x >= landingPad.x && ship.x <= landingPad.x + landingPad.width;
-      const gentle = Math.abs(ship.vy) < 1.8 && Math.abs(ship.vx) < 1.1;
-      const upright = Math.abs(ship.angle) < 0.18;
+      const gentle = Math.abs(ship.vy) < config.gentleVy && Math.abs(ship.vx) < config.gentleVx;
+      const upright = Math.abs(ship.angle) < config.upright;
       if (onPad && gentle && upright) {
         landSuccess();
       } else {
@@ -1923,6 +2005,7 @@ function createRocketLanderGame() {
       crash("Lost in space");
       return;
     }
+    ship.fuel = Math.max(0, ship.fuel);
     updateHud();
   }
 
@@ -1945,7 +2028,7 @@ function createRocketLanderGame() {
     ctx.moveTo(10, 16);
     ctx.lineTo(16, 24);
     ctx.stroke();
-    if (keys.thrust && ship.fuel > 0 && running) {
+    if (keys.thrust && (getConfig().infiniteFuel || ship.fuel > 0) && running) {
       ctx.fillStyle = "#ff8a3d";
       ctx.beginPath();
       ctx.moveTo(-6, 18);
@@ -1999,7 +2082,7 @@ function createRocketLanderGame() {
       ctx.font = "700 32px Trebuchet MS";
       ctx.fillText("Rocket Lander", 450, 260);
       ctx.font = "19px Trebuchet MS";
-      ctx.fillText("Use thrust and tiny corrections to land upright", 450, 294);
+      ctx.fillText(getConfig().infiniteFuel ? "Chill mode gives you infinite fuel" : "Use thrust and tiny corrections to land upright", 450, 294);
     }
   }
 
@@ -2019,8 +2102,8 @@ function createRocketLanderGame() {
     tagline: "Moon-landing balance test",
     subtitle: "Feather the thrust, keep the rocket upright, and land softly on a tiny pad.",
     description:
-      "A lunar lander-style skill game with thrust control, limited fuel, rough terrain, and stricter landing pads as the stages climb.",
-    controls: "Left and right rotate, Up or Space thrusts, and soft vertical speed matters.",
+      "A lunar lander-style skill game with a gentler learning curve, longer stage progression, and an infinite-fuel Chill mode if you just want to practice landings.",
+    controls: "Left and right rotate, Up or Space thrusts, and Chill difficulty gives infinite fuel.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
       stage.innerHTML = "";
@@ -2078,8 +2161,12 @@ function createHoopShotGame() {
   let stageLevel = 1;
   let shotsLeft = 0;
   let streak = 0;
+  let madeThisStage = 0;
   let ball = null;
+  let shooterX = 132;
+  let aimAngle = -0.92;
   let hoop = { x: 650, y: 220, vx: 1.4, width: 86 };
+  const keys = { left: false, right: false, up: false, down: false };
 
   function getConfig() {
     const mode = getDifficultyMode();
@@ -2091,7 +2178,7 @@ function createHoopShotGame() {
   function updateHud() {
     shell.hud.stage.textContent = `Stage ${stageLevel}`;
     shell.hud.shots.textContent = `Shots ${shotsLeft}`;
-    shell.hud.streak.textContent = `Streak ${streak}`;
+    shell.hud.streak.textContent = `Made ${madeThisStage}`;
     refreshLevel();
   }
 
@@ -2100,7 +2187,10 @@ function createHoopShotGame() {
     stageLevel = level;
     shotsLeft = config.shots;
     streak = 0;
+    madeThisStage = 0;
     ball = null;
+    shooterX = 132;
+    aimAngle = -0.92;
     hoop = {
       x: 620,
       y: 240 - Math.min(80, (level - 1) * 10),
@@ -2121,11 +2211,12 @@ function createHoopShotGame() {
   function shoot() {
     if (!running || ball || shotsLeft <= 0) return;
     shotsLeft -= 1;
+    const shotPower = 15.2;
     ball = {
-      x: 120,
+      x: shooterX,
       y: 430,
-      vx: 8.4,
-      vy: -10.8,
+      vx: Math.cos(aimAngle) * shotPower,
+      vy: Math.sin(aimAngle) * shotPower,
       radius: 14,
       scored: false,
     };
@@ -2137,16 +2228,25 @@ function createHoopShotGame() {
     if (!ball || ball.scored) return;
     ball.scored = true;
     streak += 1;
+    madeThisStage += 1;
     setScore(appState.score + 40 + streak * 10 + stageLevel * 6);
     updateHud();
     setStatus(streak > 1 ? `Nothing but net x${streak}` : "Bucket");
-    if (streak >= 3 || (shotsLeft === 0 && !ball)) {
+    const finishedStage = madeThisStage >= 3;
+    ball = null;
+    if (finishedStage) {
       running = false;
       window.setTimeout(() => {
         buildStage(stageLevel + 1, true);
         running = true;
         frame();
       }, 420);
+      return;
+    }
+    if (shotsLeft <= 0) {
+      running = false;
+      setStatus("Out of shots - auto reset");
+      scheduleAutoReset();
     }
   }
 
@@ -2170,7 +2270,15 @@ function createHoopShotGame() {
       hoop.vx *= -1;
     }
 
-    if (!ball) return;
+    if (!ball) {
+      if (keys.left) shooterX -= 4.2;
+      if (keys.right) shooterX += 4.2;
+      if (keys.up) aimAngle = Math.max(-1.35, aimAngle - 0.03);
+      if (keys.down) aimAngle = Math.min(-0.55, aimAngle + 0.03);
+      shooterX = clamp(shooterX, 86, 240);
+      return;
+    }
+
     const previousY = ball.y;
     ball.x += ball.vx;
     ball.y += ball.vy;
@@ -2183,6 +2291,7 @@ function createHoopShotGame() {
     const insideHoop = ball.x > leftRim + 8 && ball.x < rightRim - 8;
     if (crossesHoopPlane && insideHoop) {
       scoreBasket();
+      return;
     }
 
     const hitLeftRim = Math.hypot(ball.x - leftRim, ball.y - rimY) < ball.radius + 6;
@@ -2234,9 +2343,20 @@ function createHoopShotGame() {
       ctx.stroke();
     }
 
+    ctx.save();
+    ctx.translate(shooterX, 430);
+    ctx.rotate(aimAngle + Math.PI / 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.44)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(0, -8);
+    ctx.lineTo(0, -52);
+    ctx.stroke();
+    ctx.restore();
+
     ctx.fillStyle = "#8f66ff";
     ctx.beginPath();
-    ctx.arc(120, 430, 22, 0, Math.PI * 2);
+    ctx.arc(shooterX, 430, 22, 0, Math.PI * 2);
     ctx.fill();
 
     if (ball) {
@@ -2251,6 +2371,11 @@ function createHoopShotGame() {
       ctx.stroke();
     }
 
+    ctx.fillStyle = "rgba(255,255,255,0.86)";
+    ctx.textAlign = "center";
+    ctx.font = "700 18px Trebuchet MS";
+    ctx.fillText(`Move with Left/Right. Aim with Up/Down. Angle ${Math.round((-aimAngle * 180) / Math.PI)}°`, 450, 34);
+
     if (!running) {
       ctx.fillStyle = "rgba(0,0,0,0.18)";
       ctx.fillRect(0, 0, 900, 560);
@@ -2259,7 +2384,7 @@ function createHoopShotGame() {
       ctx.font = "700 32px Trebuchet MS";
       ctx.fillText("Hoop Shot", 450, 250);
       ctx.font = "19px Trebuchet MS";
-      ctx.fillText("Time your arc and sink the moving hoop", 450, 284);
+      ctx.fillText("Move, aim, and sink the moving hoop", 450, 284);
     }
   }
 
@@ -2277,10 +2402,10 @@ function createHoopShotGame() {
     id: "hoop",
     title: "Hoop Shot",
     tagline: "Moving basket score run",
-    subtitle: "Fire clean arcs, beat the moving hoop, and build a scoring streak.",
+    subtitle: "Move, aim, and fire clean arcs into the moving hoop.",
     description:
-      "A basketball-style arcade shooter where you launch a ball on a fixed arc, read the moving hoop, and chain makes to clear stages.",
-    controls: "Press Space to shoot. Time the moving hoop and aim for a clean swish.",
+      "A basketball-style arcade shooter where you position the shooter, adjust the launch arc, and try to chain makes before shots run out.",
+    controls: "Left and right move the shooter, Up and Down change the arc, and Space shoots.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
       stage.innerHTML = "";
@@ -2288,7 +2413,7 @@ function createHoopShotGame() {
         hudItems: [
           { id: "stage", label: "Stage 1" },
           { id: "shots", label: "Shots 0" },
-          { id: "streak", label: "Streak 0" },
+          { id: "streak", label: "Made 0" },
         ],
       });
       stage.appendChild(shell.wrap);
@@ -2308,6 +2433,10 @@ function createHoopShotGame() {
       running = false;
       if (animationId) cancelAnimationFrame(animationId);
       animationId = null;
+      keys.left = false;
+      keys.right = false;
+      keys.up = false;
+      keys.down = false;
       resetState();
       setStatus("Ready");
     },
@@ -2317,9 +2446,17 @@ function createHoopShotGame() {
       animationId = null;
     },
     onKeyDown(event) {
-      if (event.key === " ") {
-        shoot();
-      }
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = true;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = true;
+      if (event.key === " ") shoot();
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = false;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = false;
     },
   };
 }
@@ -2489,12 +2626,13 @@ function createPlinkoDropGame() {
   let chip = null;
   let pegs = [];
   let slots = [];
+  let bumpers = [];
 
   function getConfig() {
     const mode = getDifficultyMode();
-    if (mode === "easy") return { drops: 7, drift: 1.4 };
-    if (mode === "hard") return { drops: 5, drift: 2.1 };
-    return { drops: 6, drift: 1.75 };
+    if (mode === "easy") return { drops: 7, drift: 1.4, bumperBoost: 7.8 };
+    if (mode === "hard") return { drops: 5, drift: 2.1, bumperBoost: 9.2 };
+    return { drops: 6, drift: 1.75, bumperBoost: 8.5 };
   }
 
   function buildBoard() {
@@ -2515,6 +2653,10 @@ function createPlinkoDropGame() {
       { x: 472, width: 88, score: 110 },
       { x: 560, width: 88, score: 60 },
       { x: 648, width: 88, score: 30 },
+    ];
+    bumpers = [
+      { id: "up", x: 268, y: 452, width: 118, height: 16, tilt: -0.48, activeFrames: 0, label: "UP" },
+      { id: "down", x: 438, y: 452, width: 118, height: 16, tilt: 0.48, activeFrames: 0, label: "DOWN" },
     ];
   }
 
@@ -2593,6 +2735,20 @@ function createPlinkoDropGame() {
       }
     });
 
+    bumpers.forEach((bumper) => {
+      bumper.activeFrames = Math.max(0, bumper.activeFrames - 1);
+      const halfWidth = bumper.width / 2;
+      const dx = chip.x - bumper.x;
+      const dy = chip.y - bumper.y;
+      const withinX = Math.abs(dx) <= halfWidth + chip.radius;
+      const withinY = Math.abs(dy) <= bumper.height + chip.radius;
+      if (bumper.activeFrames > 0 && withinX && withinY && chip.vy > -2.5) {
+        chip.vy = -config.bumperBoost;
+        chip.vx = clamp(chip.vx + bumper.tilt * 5.4, -6.4, 6.4);
+        chip.y = bumper.y - chip.radius - 10;
+      }
+    });
+
     chip.vx *= 0.994;
     if (chip.y >= 500) {
       resolveSlot();
@@ -2626,6 +2782,19 @@ function createPlinkoDropGame() {
       ctx.fillText(String(slot.score), slot.x + slot.width / 2 - 2, 526);
     });
 
+    bumpers.forEach((bumper) => {
+      ctx.save();
+      ctx.translate(bumper.x, bumper.y);
+      ctx.rotate(bumper.activeFrames > 0 ? bumper.tilt * 0.7 : bumper.tilt * 0.18);
+      ctx.fillStyle = bumper.activeFrames > 0 ? "#7ef0bb" : "#46b1ff";
+      ctx.fillRect(-bumper.width / 2, -bumper.height / 2, bumper.width, bumper.height);
+      ctx.restore();
+      ctx.fillStyle = "rgba(255,255,255,0.72)";
+      ctx.font = "700 12px Trebuchet MS";
+      ctx.textAlign = "center";
+      ctx.fillText(bumper.label, bumper.x, bumper.y - 18);
+    });
+
     if (chip) {
       ctx.beginPath();
       ctx.arc(chip.x, chip.y, chip.radius, 0, Math.PI * 2);
@@ -2636,7 +2805,7 @@ function createPlinkoDropGame() {
     ctx.fillStyle = "rgba(255,255,255,0.86)";
     ctx.textAlign = "center";
     ctx.font = "700 18px Trebuchet MS";
-    ctx.fillText("Press Space to drop a chip", 410, 34);
+    ctx.fillText("Space drops a chip. Up and Down fire the bumpers.", 410, 34);
 
     if (!running) {
       ctx.fillStyle = "rgba(0,0,0,0.2)";
@@ -2665,8 +2834,8 @@ function createPlinkoDropGame() {
     tagline: "Peg-board score chaser",
     subtitle: "Drop chips through the peg field and land in the highest scoring slot.",
     description:
-      "A Plinko-style arcade game with bouncing pegs, score buckets, limited drops, and stage progression as each round gets a little meaner.",
-    controls: "Press Space to drop a chip from the top center.",
+      "A Plinko-style arcade game with bouncing pegs, score buckets, limited drops, and controllable bumpers so you can change a falling chip's path.",
+    controls: "Press Space to drop a chip. Use Up and Down to smack the chip back upward with the bumpers.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
       stage.innerHTML = "";
@@ -2705,6 +2874,16 @@ function createPlinkoDropGame() {
     onKeyDown(event) {
       if (event.key === " ") {
         dropChip();
+        return;
+      }
+      if (["ArrowUp", "w", "W"].includes(event.key)) {
+        const bumper = bumpers.find((entry) => entry.id === "up");
+        if (bumper) bumper.activeFrames = 10;
+        return;
+      }
+      if (["ArrowDown", "s", "S"].includes(event.key)) {
+        const bumper = bumpers.find((entry) => entry.id === "down");
+        if (bumper) bumper.activeFrames = 10;
       }
     },
   };
@@ -3120,62 +3299,274 @@ function createMarbleTiltGame() {
   let marble = { x: 0, y: 0, vx: 0, vy: 0 };
   const keys = { left: false, right: false, up: false, down: false };
   const tile = 56;
-  const levels = [
-    [
-      "########",
-      "#S.....#",
-      "#..#...#",
-      "#..#..G#",
-      "#......#",
-      "########",
+  const levelSets = {
+    easy: [
+      [
+        "########",
+        "#S.....#",
+        "#..#...#",
+        "#..#..G#",
+        "#......#",
+        "########",
+      ],
+      [
+        "########",
+        "#S..#..#",
+        "#...#..#",
+        "#...#G.#",
+        "#......#",
+        "########",
+      ],
+      [
+        "#########",
+        "#S.....G#",
+        "#.###...#",
+        "#.......#",
+        "#...#...#",
+        "#########",
+      ],
+      [
+        "#########",
+        "#S....#G#",
+        "#.##..#.#",
+        "#.......#",
+        "#.#..##.#",
+        "#.......#",
+        "#########",
+      ],
+      [
+        "##########",
+        "#S.......#",
+        "#.#..#.#.#",
+        "#.#....#G#",
+        "#....#...#",
+        "#........#",
+        "##########",
+      ],
+      [
+        "##########",
+        "#S.....#G#",
+        "#.###..#.#",
+        "#.....##.#",
+        "#........#",
+        "#..#.....#",
+        "##########",
+      ],
+      [
+        "###########",
+        "#S........#",
+        "#.###.###.#",
+        "#.....#...#",
+        "#.###.#.#G#",
+        "#.........#",
+        "###########",
+      ],
+      [
+        "###########",
+        "#S.......G#",
+        "#.#####.#.#",
+        "#.......#.#",
+        "#.#.#####.#",
+        "#.........#",
+        "###########",
+      ],
     ],
-    [
-      "########",
-      "#S..#..#",
-      "#.#.#O.#",
-      "#.#...G#",
-      "#...#..#",
-      "########",
+    normal: [
+      [
+        "########",
+        "#S..#..#",
+        "#.#.#O.#",
+        "#.#...G#",
+        "#...#..#",
+        "########",
+      ],
+      [
+        "#########",
+        "#S.....G#",
+        "#.###.#.#",
+        "#...O.#.#",
+        "#.#...#.#",
+        "#.......#",
+        "#########",
+      ],
+      [
+        "#########",
+        "#S....#G#",
+        "#.##..#.#",
+        "#..O..#.#",
+        "#.#..##.#",
+        "#.......#",
+        "#########",
+      ],
+      [
+        "##########",
+        "#S...#...#",
+        "#.#O.#.#G#",
+        "#.#..#.#.#",
+        "#....O...#",
+        "#.######.#",
+        "#........#",
+        "##########",
+      ],
+      [
+        "##########",
+        "#S..O....#",
+        "#.##.#.#.#",
+        "#....#.#G#",
+        "#.O..#...#",
+        "#....###.#",
+        "##########",
+      ],
+      [
+        "###########",
+        "#S...#....#",
+        "#.#O.#.##.#",
+        "#.#..#..#.#",
+        "#...O...#G#",
+        "#.#####...#",
+        "#.........#",
+        "###########",
+      ],
+      [
+        "###########",
+        "#S....#..G#",
+        "#.##O.#.#.#",
+        "#....##.#.#",
+        "#.O......##",
+        "#...###...#",
+        "###########",
+      ],
+      [
+        "############",
+        "#S.....#...#",
+        "#.###O.#.#.#",
+        "#...#..#.#G#",
+        "#.#...O..#.#",
+        "#...####...#",
+        "#..........#",
+        "############",
+      ],
     ],
-    [
-      "#########",
-      "#S.....G#",
-      "#.###.#.#",
-      "#...O.#.#",
-      "#.#...#.#",
-      "#.......#",
-      "#########",
+    hard: [
+      [
+        "#########",
+        "#S...O.G#",
+        "#.###.#.#",
+        "#...O.#.#",
+        "#.#...#.#",
+        "#.......#",
+        "#########",
+      ],
+      [
+        "##########",
+        "#S...#...#",
+        "#.#O.#.#G#",
+        "#.#..#.#.#",
+        "#....O...#",
+        "#.######.#",
+        "#........#",
+        "##########",
+      ],
+      [
+        "##########",
+        "#S..O....#",
+        "#.##.#.#.#",
+        "#....#.#G#",
+        "#.O..#...#",
+        "#....###.#",
+        "##########",
+      ],
+      [
+        "###########",
+        "#S...#....#",
+        "#.#O.#.##.#",
+        "#.#..#..#.#",
+        "#...O...#G#",
+        "#.#####...#",
+        "#.........#",
+        "###########",
+      ],
+      [
+        "###########",
+        "#S....#..G#",
+        "#.##O.#.#.#",
+        "#....##.#.#",
+        "#.O......##",
+        "#...###...#",
+        "###########",
+      ],
+      [
+        "############",
+        "#S.....#...#",
+        "#.###O.#.#.#",
+        "#...#..#.#G#",
+        "#.#...O..#.#",
+        "#...####...#",
+        "#..........#",
+        "############",
+      ],
+      [
+        "############",
+        "#S..O..#..G#",
+        "#.##.#.#.#.#",
+        "#....#...#.#",
+        "#.O.###O.#.#",
+        "#....#.....#",
+        "#.######...#",
+        "############",
+      ],
+      [
+        "#############",
+        "#S....#....G#",
+        "#.##O.#.###.#",
+        "#....##...#.#",
+        "#.#O...O#.#.#",
+        "#...###.#...#",
+        "#.#####.###.#",
+        "#...........#",
+        "#############",
+      ],
+      [
+        "#############",
+        "#S..O...#..G#",
+        "#.####.#.#.##",
+        "#....#.#.#..#",
+        "#.O..#...#O.#",
+        "#..###.###..#",
+        "#......O....#",
+        "#############",
+      ],
+      [
+        "##############",
+        "#S....#.....G#",
+        "#.##O.#.###..#",
+        "#....##...#O.#",
+        "#.#O...O#.#..#",
+        "#...###.#...##",
+        "#.#####.###..#",
+        "#........O...#",
+        "##############",
+      ],
     ],
-    [
-      "#########",
-      "#S....#G#",
-      "#.##..#.#",
-      "#..O..#.#",
-      "#.#..##.#",
-      "#.......#",
-      "#########",
-    ],
-    [
-      "##########",
-      "#S...#...#",
-      "#.#O.#.#G#",
-      "#.#..#.#.#",
-      "#....O...#",
-      "#.######.#",
-      "#........#",
-      "##########",
-    ],
-  ];
+  };
 
   function getCurrentLayout() {
-    return levels[(stageLevel - 1) % levels.length];
+    const set = getLevelSet();
+    return set[(stageLevel - 1) % set.length];
+  }
+
+  function getLevelSet() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return levelSets.easy;
+    if (mode === "hard") return levelSets.hard;
+    return levelSets.normal;
   }
 
   function getConfig() {
     const mode = getDifficultyMode();
-    if (mode === "easy") return { accel: 0.22, friction: 0.93, maxSpeed: 4.3 };
-    if (mode === "hard") return { accel: 0.31, friction: 0.95, maxSpeed: 5.5 };
-    return { accel: 0.26, friction: 0.94, maxSpeed: 4.8 };
+    if (mode === "easy") return { accel: 0.2, friction: 0.92, maxSpeed: 4.1 };
+    if (mode === "hard") return { accel: 0.34, friction: 0.958, maxSpeed: 5.9 };
+    return { accel: 0.27, friction: 0.944, maxSpeed: 4.9 };
   }
 
   function loadStage(level, preserveScore = false) {
@@ -3411,6 +3802,15 @@ function createPongGame() {
   let aiScore = 0;
   let aiTargetY = 220;
 
+  function getAiConfig() {
+    const mode = appState.difficulty;
+    if (mode === "chill") return { trackChance: 0.012, idleChance: 0.01, farSpeed: 1.25, nearSpeed: 0.95, error: 95 };
+    if (mode === "easy") return { trackChance: 0.018, idleChance: 0.012, farSpeed: 1.7, nearSpeed: 1.1, error: 72 };
+    if (mode === "hard") return { trackChance: 0.05, idleChance: 0.018, farSpeed: 3.75, nearSpeed: 2.5, error: 24 };
+    if (mode === "chaos") return { trackChance: 0.075, idleChance: 0.02, farSpeed: 4.6, nearSpeed: 3.2, error: 10 };
+    return { trackChance: 0.032, idleChance: 0.015, farSpeed: 2.65, nearSpeed: 1.7, error: 44 };
+  }
+
   function resetState() {
     player = { x: 26, y: 170, width: 14, height: 100 };
     ai = { x: 720, y: 170, width: 14, height: 100 };
@@ -3440,18 +3840,19 @@ function createPongGame() {
   }
 
   function update() {
+    const aiConfig = getAiConfig();
     player.y += upPressed ? -6 : 0;
     player.y += downPressed ? 6 : 0;
     player.y = clamp(player.y, 0, 440 - player.height);
 
     if (ball.vx > 0) {
-      if (Math.random() < 0.03) {
-        aiTargetY = ball.y + (Math.random() * 130 - 65);
+      if (Math.random() < aiConfig.trackChance) {
+        aiTargetY = ball.y + (Math.random() * aiConfig.error * 2 - aiConfig.error);
       }
-    } else if (Math.random() < 0.02) {
-      aiTargetY = 220 + (Math.random() * 120 - 60);
+    } else if (Math.random() < aiConfig.idleChance) {
+      aiTargetY = 220 + (Math.random() * (aiConfig.error + 35) - (aiConfig.error + 35) / 2);
     }
-    const aiSpeed = ball.x > 520 ? 2.35 : 1.45;
+    const aiSpeed = ball.x > 520 ? aiConfig.farSpeed : aiConfig.nearSpeed;
     ai.y += aiTargetY > ai.y + ai.height / 2 ? aiSpeed : -aiSpeed;
     ai.y = clamp(ai.y, 0, 440 - ai.height);
 
@@ -7865,27 +8266,37 @@ function createSnoutScoutGame() {
   let running = false;
   let pig;
   let enemies = [];
+  let projectiles = [];
   let actionSide = "";
   let actionType = "";
   let actionFrames = 0;
   let blockFrames = 0;
+  let jumpFrames = 0;
   let spawnTimer = 0;
   let lives = 3;
   let defeated = 0;
 
   function getConfig() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") {
-      return { lives: 4, spawnRate: 74, minSpawnRate: 34, enemySpeed: 2.45 };
+    if (appState.difficulty === "chill") {
+      return { lives: 5, spawnRate: 84, minSpawnRate: 42, enemySpeed: 2.2, projectileSpeed: 4.3 };
     }
-    if (getDifficultyMode() === "hard") {
-      return { lives: 2, spawnRate: 50, minSpawnRate: 21, enemySpeed: 3.45 };
+    if (appState.difficulty === "easy") {
+      return { lives: 4, spawnRate: 74, minSpawnRate: 36, enemySpeed: 2.45, projectileSpeed: 4.8 };
     }
-    return { lives: 3, spawnRate: 61, minSpawnRate: 26, enemySpeed: 3.0 };
+    if (appState.difficulty === "hard") {
+      return { lives: 2, spawnRate: 50, minSpawnRate: 21, enemySpeed: 3.45, projectileSpeed: 6.1 };
+    }
+    if (appState.difficulty === "chaos") {
+      return { lives: 2, spawnRate: 44, minSpawnRate: 18, enemySpeed: 3.9, projectileSpeed: 6.8 };
+    }
+    return { lives: 3, spawnRate: 61, minSpawnRate: 26, enemySpeed: 3.0, projectileSpeed: 5.4 };
   }
 
   function getActionLabel() {
     if (blockFrames > 0) return "Guard up";
+    if (jumpFrames > 0 && actionType === "jumpkick" && actionSide) {
+      return `${actionSide === "left" ? "Left" : "Right"} jump kick`;
+    }
     if (!actionType || !actionSide) return "Ready";
     return `${actionSide === "left" ? "Left" : "Right"} ${actionType}`;
   }
@@ -7969,6 +8380,56 @@ function createSnoutScoutGame() {
         color: "#ef4444",
       };
     }
+    if (type === "jumper") {
+      return {
+        type,
+        side,
+        x: side === "left" ? -36 : 796,
+        y: 300,
+        baseY: 300,
+        jumpPhase: Math.random() * Math.PI * 2,
+        jumpSpeed: 0.18 + Math.random() * 0.05,
+        jumpHeight: 72 + Math.random() * 10,
+        vx: (side === "left" ? 1 : -1) * (baseSpeed + 0.55 + Math.random() * 0.25),
+        width: 28,
+        height: 28,
+        hp: 1,
+        reward: 19,
+        color: "#f472b6",
+      };
+    }
+    if (type === "thrower") {
+      return {
+        type,
+        side,
+        x: side === "left" ? -36 : 796,
+        y: 296,
+        holdX: side === "left" ? pig.x - 176 : pig.x + 176,
+        throwCooldown: 82 - Math.min(34, level * 3),
+        width: 30,
+        height: 30,
+        vx: (side === "left" ? 1 : -1) * (baseSpeed - 0.18 + Math.random() * 0.18),
+        hp: 1,
+        reward: 21,
+        color: "#fb923c",
+      };
+    }
+    if (type === "flyer") {
+      return {
+        type,
+        side,
+        x: side === "left" ? -40 : 800,
+        y: 224,
+        baseY: 224 + (Math.random() * 16 - 8),
+        floatPhase: Math.random() * Math.PI * 2,
+        vx: (side === "left" ? 1 : -1) * (baseSpeed + 0.8 + Math.random() * 0.35),
+        width: 32,
+        height: 22,
+        hp: 1,
+        reward: 24,
+        color: "#38bdf8",
+      };
+    }
     return {
       type: "grunt",
       side,
@@ -7987,10 +8448,12 @@ function createSnoutScoutGame() {
     const config = getConfig();
     pig = { x: 380, y: 300 };
     enemies = [];
+    projectiles = [];
     actionSide = "";
     actionType = "";
     actionFrames = 0;
     blockFrames = 0;
+    jumpFrames = 0;
     spawnTimer = 0;
     lives = config.lives;
     defeated = 0;
@@ -8005,17 +8468,22 @@ function createSnoutScoutGame() {
     const level = 1 + Math.floor(appState.score / 60);
     const roll = Math.random();
     let type = "grunt";
-    if (level >= 2 && roll > 0.82) type = "runner";
-    if (level >= 3 && roll > 0.68 && roll <= 0.82) type = "brute";
-    if (level >= 4 && roll > 0.54 && roll <= 0.68) type = "crawler";
-    if (level >= 5 && roll > 0.4 && roll <= 0.54) type = "shield";
-    if (level >= 6 && roll > 0.28 && roll <= 0.4) type = "charger";
+    if (level >= 2 && roll > 0.84) type = "runner";
+    else if (level >= 3 && roll > 0.72) type = "brute";
+    else if (level >= 4 && roll > 0.61) type = "crawler";
+    else if (level >= 5 && roll > 0.5) type = "shield";
+    else if (level >= 6 && roll > 0.39) type = "charger";
+    else if (level >= 7 && roll > 0.29) type = "jumper";
+    else if (level >= 8 && roll > 0.19) type = "thrower";
+    else if (level >= 9 && roll > 0.09) type = "flyer";
     enemies.push(getEnemyStats(type, side, level));
   }
 
   function canHitEnemy(enemy, moveType) {
-    if (enemy.type === "crawler") return moveType === "kick";
+    if (enemy.type === "crawler") return moveType === "kick" || moveType === "jumpkick";
     if (enemy.type === "shield") return moveType === "kick";
+    if (enemy.type === "jumper") return moveType === "jumpkick";
+    if (enemy.type === "flyer") return moveType === "jumpkick";
     return true;
   }
 
@@ -8034,7 +8502,13 @@ function createSnoutScoutGame() {
       enemy: null,
       defeatedNow: true,
       status:
-        enemy.type === "charger"
+        enemy.type === "flyer"
+          ? "Flyer swatted"
+          : enemy.type === "thrower"
+            ? "Thrower stuffed"
+            : enemy.type === "jumper"
+              ? "Jumper clipped"
+              : enemy.type === "charger"
           ? "Charger dropped"
           : enemy.type === "shield"
             ? "Shield cracked"
@@ -8050,16 +8524,24 @@ function createSnoutScoutGame() {
     if (!running) return;
     actionSide = side;
     actionType = moveType;
-    actionFrames = moveType === "kick" ? 14 : 10;
+    actionFrames = moveType === "jumpkick" ? 16 : moveType === "kick" ? 14 : 10;
     blockFrames = 0;
-    const reachMin = side === "left" ? pig.x - (moveType === "kick" ? 148 : 118) : pig.x + 24;
-    const reachMax = side === "left" ? pig.x - 22 : pig.x + (moveType === "kick" ? 148 : 118);
+    jumpFrames = moveType === "jumpkick" ? 16 : 0;
+    const reachDistance = moveType === "jumpkick" ? 164 : moveType === "kick" ? 148 : 118;
+    const reachMin = side === "left" ? pig.x - reachDistance : pig.x + 24;
+    const reachMax = side === "left" ? pig.x - 22 : pig.x + reachDistance;
     const survivors = [];
     let resultStatus = "Swing and miss";
     enemies.forEach((enemy) => {
       const sameSide = enemy.side === side;
       const inReach = enemy.x >= reachMin && enemy.x <= reachMax;
+      const airborneTarget = enemy.y < pig.y - 26;
+      const heightMatch = moveType === "jumpkick" ? enemy.y <= pig.y + 8 : !airborneTarget;
       if (!sameSide || !inReach) {
+        survivors.push(enemy);
+        return;
+      }
+      if (!heightMatch) {
         survivors.push(enemy);
         return;
       }
@@ -8077,9 +8559,21 @@ function createSnoutScoutGame() {
     actionSide = "";
     actionType = "guard";
     actionFrames = 0;
+    jumpFrames = 0;
     blockFrames = 14;
     setStatus("Guard up");
     updateHud();
+  }
+
+  function launchProjectile(enemy) {
+    const config = getConfig();
+    projectiles.push({
+      x: enemy.x,
+      y: enemy.y - 6,
+      vx: (enemy.side === "left" ? 1 : -1) * (config.projectileSpeed + Math.random() * 0.8),
+      radius: 6,
+      color: "#f59e0b",
+    });
   }
 
   function update() {
@@ -8096,7 +8590,61 @@ function createSnoutScoutGame() {
       if (enemy.type === "charger" && Math.abs(enemy.x - pig.x) < 180) {
         enemy.x += enemy.vx * 0.58;
       }
+      if (enemy.type === "jumper") {
+        enemy.jumpPhase += enemy.jumpSpeed;
+        enemy.y = enemy.baseY - Math.abs(Math.sin(enemy.jumpPhase)) * enemy.jumpHeight;
+        enemy.x += enemy.vx * (enemy.y < enemy.baseY - 20 ? 1.08 : 0.95);
+        return;
+      }
+      if (enemy.type === "thrower") {
+        const closeEnough =
+          enemy.side === "left" ? enemy.x >= enemy.holdX : enemy.x <= enemy.holdX;
+        if (!closeEnough) {
+          enemy.x += enemy.vx;
+        } else {
+          enemy.throwCooldown -= 1;
+          if (enemy.throwCooldown <= 0) {
+            launchProjectile(enemy);
+            enemy.throwCooldown = Math.max(34, 86 - level * 4);
+          }
+        }
+        return;
+      }
+      if (enemy.type === "flyer") {
+        enemy.floatPhase += 0.15;
+        enemy.y = enemy.baseY + Math.sin(enemy.floatPhase) * 18;
+        enemy.x += enemy.vx;
+        return;
+      }
       enemy.x += enemy.vx;
+    });
+
+    projectiles = projectiles.filter((projectile) => {
+      projectile.x += projectile.vx;
+      if (projectile.x < -40 || projectile.x > 800) return false;
+      const hitPig =
+        Math.abs(projectile.x - pig.x) < 20 &&
+        Math.abs(projectile.y - (pig.y - (jumpFrames > 0 ? 32 : 0))) < 36;
+      if (!hitPig) return true;
+      if (blockFrames > 0) {
+        defeated += 1;
+        setScore(appState.score + 6);
+        setStatus("Blocked shot");
+        return false;
+      }
+      if (jumpFrames > 0) {
+        return true;
+      }
+      lives -= 1;
+      updateHud();
+      if (lives <= 0) {
+        running = false;
+        setStatus(`Snout splat - ${defeated} defeated`);
+        scheduleAutoReset();
+      } else {
+        setStatus("Bonked by a throw");
+      }
+      return false;
     });
 
     if (actionFrames > 0) {
@@ -8105,6 +8653,10 @@ function createSnoutScoutGame() {
         actionSide = "";
         actionType = "";
       }
+    }
+
+    if (jumpFrames > 0) {
+      jumpFrames -= 1;
     }
 
     if (blockFrames > 0) {
@@ -8118,7 +8670,8 @@ function createSnoutScoutGame() {
     const survivors = [];
     let tookHit = false;
     enemies.forEach((enemy) => {
-      const hitPig = Math.abs(enemy.x - pig.x) < 24 && Math.abs(enemy.y - pig.y) < 46;
+      const pigY = pig.y - (jumpFrames > 0 ? 32 : 0);
+      const hitPig = Math.abs(enemy.x - pig.x) < 24 && Math.abs(enemy.y - pigY) < 46;
       if (hitPig) {
         if (blockFrames > 0) {
           defeated += 1;
@@ -8149,24 +8702,25 @@ function createSnoutScoutGame() {
   }
 
   function drawPig() {
+    const pigY = pig.y - (jumpFrames > 0 ? 32 : 0);
     ctx.fillStyle = "#ffb4c8";
     ctx.beginPath();
-    ctx.arc(pig.x, pig.y, 36, 0, Math.PI * 2);
+    ctx.arc(pig.x, pigY, 36, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#ff8ea8";
     ctx.beginPath();
-    ctx.ellipse(pig.x, pig.y + 10, 18, 12, 0, 0, Math.PI * 2);
+    ctx.ellipse(pig.x, pigY + 10, 18, 12, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#172033";
     ctx.beginPath();
-    ctx.arc(pig.x - 10, pig.y - 8, 4, 0, Math.PI * 2);
-    ctx.arc(pig.x + 10, pig.y - 8, 4, 0, Math.PI * 2);
+    ctx.arc(pig.x - 10, pigY - 8, 4, 0, Math.PI * 2);
+    ctx.arc(pig.x + 10, pigY - 8, 4, 0, Math.PI * 2);
     ctx.fill();
     if (actionType === "guard" || blockFrames > 0) {
       ctx.strokeStyle = "#7dd3fc";
       ctx.lineWidth = 8;
       ctx.beginPath();
-      ctx.arc(pig.x, pig.y, 48, Math.PI * 0.25, Math.PI * 0.75);
+      ctx.arc(pig.x, pigY, 48, Math.PI * 0.25, Math.PI * 0.75);
       ctx.stroke();
     }
     if (actionSide && actionType === "punch") {
@@ -8174,11 +8728,11 @@ function createSnoutScoutGame() {
       ctx.lineWidth = 8;
       ctx.beginPath();
       if (actionSide === "left") {
-        ctx.moveTo(pig.x - 18, pig.y + 4);
-        ctx.lineTo(pig.x - 86, pig.y - 12);
+        ctx.moveTo(pig.x - 18, pigY + 4);
+        ctx.lineTo(pig.x - 86, pigY - 12);
       } else {
-        ctx.moveTo(pig.x + 18, pig.y + 4);
-        ctx.lineTo(pig.x + 86, pig.y - 12);
+        ctx.moveTo(pig.x + 18, pigY + 4);
+        ctx.lineTo(pig.x + 86, pigY - 12);
       }
       ctx.stroke();
     }
@@ -8187,11 +8741,24 @@ function createSnoutScoutGame() {
       ctx.lineWidth = 9;
       ctx.beginPath();
       if (actionSide === "left") {
-        ctx.moveTo(pig.x - 8, pig.y + 24);
-        ctx.lineTo(pig.x - 116, pig.y + 18);
+        ctx.moveTo(pig.x - 8, pigY + 24);
+        ctx.lineTo(pig.x - 116, pigY + 18);
       } else {
-        ctx.moveTo(pig.x + 8, pig.y + 24);
-        ctx.lineTo(pig.x + 116, pig.y + 18);
+        ctx.moveTo(pig.x + 8, pigY + 24);
+        ctx.lineTo(pig.x + 116, pigY + 18);
+      }
+      ctx.stroke();
+    }
+    if (actionSide && actionType === "jumpkick") {
+      ctx.strokeStyle = "#f9a8d4";
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      if (actionSide === "left") {
+        ctx.moveTo(pig.x - 4, pigY + 14);
+        ctx.lineTo(pig.x - 132, pigY - 28);
+      } else {
+        ctx.moveTo(pig.x + 4, pigY + 14);
+        ctx.lineTo(pig.x + 132, pigY - 28);
       }
       ctx.stroke();
     }
@@ -8216,6 +8783,18 @@ function createSnoutScoutGame() {
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, 12, 0, Math.PI * 2);
         ctx.fill();
+      } else if (enemy.type === "flyer") {
+        ctx.beginPath();
+        ctx.ellipse(enemy.x, enemy.y, 18, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(enemy.x - 12, enemy.y);
+        ctx.lineTo(enemy.x - 22, enemy.y - 12);
+        ctx.moveTo(enemy.x + 12, enemy.y);
+        ctx.lineTo(enemy.x + 22, enemy.y - 12);
+        ctx.stroke();
       } else {
         ctx.fillRect(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
       }
@@ -8246,9 +8825,22 @@ function createSnoutScoutGame() {
         ctx.fillStyle = "#f5d0fe";
         ctx.fillRect(enemy.x - 8, enemy.y + 10, 16, 6);
       }
+      if (enemy.type === "thrower") {
+        ctx.fillStyle = "#fde68a";
+        ctx.beginPath();
+        ctx.arc(enemy.x + (enemy.side === "left" ? 10 : -10), enemy.y - 10, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.fillStyle = "#101826";
       ctx.fillRect(enemy.x - 6, enemy.y - 4, 4, 4);
       ctx.fillRect(enemy.x + 2, enemy.y - 4, 4, 4);
+    });
+
+    projectiles.forEach((projectile) => {
+      ctx.fillStyle = projectile.color;
+      ctx.beginPath();
+      ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+      ctx.fill();
     });
 
     drawPig();
@@ -8261,7 +8853,7 @@ function createSnoutScoutGame() {
       ctx.font = "700 34px Trebuchet MS";
       ctx.fillText("Snout Scout", 380, 206);
       ctx.font = "22px Trebuchet MS";
-      ctx.fillText("Punch with A/D, kick with Q/E, block with S", 380, 246);
+      ctx.fillText("Punch A/D, kick Q/E, jump kick Z/C, block S", 380, 246);
     }
   }
 
@@ -8282,8 +8874,8 @@ function createSnoutScoutGame() {
     tagline: "Very cheap pig brawler",
     subtitle: "A worse, jankier pig slap-fighter inspired by Iron Snout-style chaos.",
     description:
-      "A deliberately lightweight pig brawler with more enemy types and more moves. Punch, kick, and block while runners, brutes, crawlers, shield foes, and chargers rush from both sides.",
-    controls: "A and D punch. Q and E kick. S blocks. Arrow left and right also punch.",
+      "A deliberately lightweight pig brawler with extra chaos. Punch, kick, jump kick, and block while runners, brutes, crawlers, shield foes, chargers, jumpers, throwers, and flyers rush in from both sides.",
+    controls: "A and D punch. Q and E kick. Z and C jump kick. S blocks. Arrow left and right also punch.",
     mount(stage) {
       stage.innerHTML = "";
       shell = createCanvasShell({
@@ -8317,6 +8909,8 @@ function createSnoutScoutGame() {
       if (["ArrowRight", "d", "D"].includes(event.key)) attack("right", "punch");
       if (["q", "Q"].includes(event.key)) attack("left", "kick");
       if (["e", "E"].includes(event.key)) attack("right", "kick");
+      if (["z", "Z"].includes(event.key)) attack("left", "jumpkick");
+      if (["c", "C"].includes(event.key)) attack("right", "jumpkick");
       if (["s", "S", "ArrowDown"].includes(event.key)) guard();
     },
     destroy() {
@@ -9568,7 +10162,6 @@ function createLaneHopperGame() {
   let ctx;
   let running = false;
   let animationId = null;
-  let lives = 3;
   let crossings = 0;
   let player = { col: 3, row: 8 };
   let lanes = [];
@@ -9577,10 +10170,12 @@ function createLaneHopperGame() {
   const cellSize = 64;
 
   function getConfig() {
-    const mode = getDifficultyMode();
-    if (mode === "easy") return { lives: 4, speed: 1.7, density: 0.28 };
-    if (mode === "hard") return { lives: 2, speed: 2.5, density: 0.42 };
-    return { lives: 3, speed: 2.1, density: 0.35 };
+    const mode = appState.difficulty;
+    if (mode === "chill") return { speed: 1.05, density: 0.16, widthBias: 1.45 };
+    if (mode === "easy") return { speed: 1.35, density: 0.22, widthBias: 1.32 };
+    if (mode === "hard") return { speed: 2.25, density: 0.38, widthBias: 1.08 };
+    if (mode === "chaos") return { speed: 2.85, density: 0.5, widthBias: 0.95 };
+    return { speed: 1.75, density: 0.3, widthBias: 1.18 };
   }
 
   function buildLanes() {
@@ -9588,12 +10183,12 @@ function createLaneHopperGame() {
     lanes = Array.from({ length: rows - 2 }, (_, laneIndex) => {
       const row = laneIndex + 1;
       const direction = laneIndex % 2 === 0 ? 1 : -1;
-      const obstacleCount = 2 + (laneIndex % 2) + (config.density > 0.38 ? 1 : 0);
-      const width = laneIndex % 3 === 0 ? 1.35 : 1;
+      const obstacleCount = Math.max(1, 1 + Math.round(config.density * 5) + (laneIndex % 2));
+      const width = (laneIndex % 3 === 0 ? 1.15 : 0.92) * config.widthBias;
       return {
         row,
         direction,
-        speed: config.speed + laneIndex * 0.12 + crossings * 0.03,
+        speed: config.speed + laneIndex * 0.08 + crossings * 0.02,
         obstacles: Array.from({ length: obstacleCount }, (_, index) => ({
           x: ((index * 2.9 + laneIndex * 0.8) % (cols + 3)) - 2,
           width,
@@ -9603,9 +10198,9 @@ function createLaneHopperGame() {
   }
 
   function updateHud() {
-    shell.hud.lives.textContent = `Lives ${lives}`;
     shell.hud.crossings.textContent = `Crossings ${crossings}`;
-    shell.hud.lane.textContent = `Rows ${rows - 2}`;
+    shell.hud.lane.textContent = `${getDifficultyPreset().label} mode`;
+    shell.hud.resets.textContent = "No lives";
     refreshLevel();
   }
 
@@ -9614,8 +10209,6 @@ function createLaneHopperGame() {
   }
 
   function resetState() {
-    const config = getConfig();
-    lives = config.lives;
     crossings = 0;
     running = false;
     resetPlayer();
@@ -9626,18 +10219,9 @@ function createLaneHopperGame() {
   }
 
   function collidePlayer() {
-    lives -= 1;
-    if (lives <= 0) {
-      running = false;
-      setStatus("Traffic win - auto reset");
-      scheduleAutoReset();
-      updateHud();
-      draw();
-      return;
-    }
     resetPlayer();
     updateHud();
-    setStatus("Bonk - try again");
+    setStatus("Bonk - back to start");
   }
 
   function handleGoal() {
@@ -9696,7 +10280,7 @@ function createLaneHopperGame() {
       ctx.font = "700 32px Trebuchet MS";
       ctx.fillText("Lane Hopper", (cols * cellSize) / 2, 240);
       ctx.font = "20px Trebuchet MS";
-      ctx.fillText("Cross the road and keep your lives", (cols * cellSize) / 2, 276);
+      ctx.fillText("Cross the road without a lives system", (cols * cellSize) / 2, 276);
     }
   }
 
@@ -9716,16 +10300,16 @@ function createLaneHopperGame() {
     tagline: "Frogger-style lane dash",
     subtitle: "Cross the lanes, dodge traffic, and keep stacking successful crossings.",
     description:
-      "A quick lane-crossing game where you hop upward through moving traffic. Each successful crossing makes the next set of lanes a little meaner.",
+      "A quick lane-crossing game where collisions send you back to the start instead of costing lives. Difficulty now changes the traffic speed, density, and lane width more clearly.",
     controls: "Use arrow keys or WASD to move one tile at a time. Reach the green strip at the top.",
     getLevelText: () => `${crossings + 1}`,
     mount(stage) {
       stage.innerHTML = "";
       shell = createCanvasShell({
         hudItems: [
-          { id: "lives", label: "Lives 3" },
           { id: "crossings", label: "Crossings 0" },
-          { id: "lane", label: "Rows 7" },
+          { id: "lane", label: "Normal mode" },
+          { id: "resets", label: "No lives" },
         ],
       });
       stage.appendChild(shell.wrap);

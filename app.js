@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260406r";
+const BUILD_VERSION = "20260406v";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -127,9 +127,9 @@ const DIFFICULTY_PRESETS = {
 };
 
 const GAME_CATEGORIES = [
-  { label: "Action", ids: ["runner", "space", "tower", "cannon", "knife", "lander", "orb", "tunnel", "hopper", "dodge", "snout", "maze", "pong", "flappy"] },
-  { label: "Arcade", ids: ["snake", "breakout", "blockdrop", "hoop", "plinko", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots"] },
-  { label: "Puzzle", ids: ["memory", "merge", "vault", "cups", "marble", "flood", "lights", "crates", "mines", "hangman", "scramble", "code"] },
+  { label: "Action", ids: ["runner", "space", "tower", "cannon", "knife", "lander", "orb", "tunnel", "hopper", "dodge", "snout", "maze", "pong", "flappy", "catch", "sweep", "rhythm", "jetpack"] },
+  { label: "Arcade", ids: ["snake", "breakout", "blockdrop", "hoop", "plinko", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots", "target", "balance", "spin", "gates"] },
+  { label: "Puzzle", ids: ["memory", "merge", "vault", "cups", "marble", "flood", "lights", "crates", "mines", "hangman", "scramble", "code", "math", "dig", "recall", "trail", "slide", "pipes"] },
 ];
 
 const els = {
@@ -177,6 +177,20 @@ const games = {
   flappy: createFlappyGame(),
   runner: createRunnerGame(),
   breakout: createBreakoutGame(),
+  target: createTargetTapGame(),
+  catch: createCatchCrazeGame(),
+  balance: createBalanceBeamGame(),
+  spin: createSpinSafeGame(),
+  sweep: createStarSweepGame(),
+  math: createMathBlitzGame(),
+  dig: createTreasureDigGame(),
+  recall: createRouteRecallGame(),
+  rhythm: createRhythmRowsGame(),
+  trail: createTileTrailGame(),
+  jetpack: createJetpackGapGame(),
+  gates: createColorGatesGame(),
+  slide: createSlideQuestGame(),
+  pipes: createPipeTwistGame(),
   blockdrop: createBlockDropGame(),
   cannon: createCannonLaunchGame(),
   knife: createKnifeFlipGame(),
@@ -1817,6 +1831,9 @@ function createRocketLanderGame() {
     { padIndex: 5, roughness: 82, minY: 294, maxY: 418, startX: 124, startY: 68 },
     { padIndex: 4, roughness: 86, minY: 290, maxY: 416, startX: 156, startY: 78 },
     { padIndex: 6, roughness: 92, minY: 286, maxY: 414, startX: 116, startY: 64 },
+    { padIndex: 2, roughness: 96, minY: 282, maxY: 412, startX: 180, startY: 74 },
+    { padIndex: 7, roughness: 102, minY: 278, maxY: 410, startX: 98, startY: 60 },
+    { padIndex: 4, roughness: 108, minY: 274, maxY: 408, startX: 168, startY: 70 },
   ];
 
   function getConfig() {
@@ -1864,16 +1881,16 @@ function createRocketLanderGame() {
     }
     if (appState.difficulty === "chaos") {
       return {
-        fuel: 88,
+        fuel: 108,
         infiniteFuel: false,
-        gravity: 0.077,
-        padWidth: 82,
-        minPadWidth: 64,
-        gentleVy: 1.58,
-        gentleVx: 0.96,
-        upright: 0.14,
-        thrustPower: 0.112,
-        rotateStep: 0.034,
+        gravity: 0.072,
+        padWidth: 90,
+        minPadWidth: 72,
+        gentleVy: 1.72,
+        gentleVx: 1.02,
+        upright: 0.16,
+        thrustPower: 0.118,
+        rotateStep: 0.03,
       };
     }
     return {
@@ -3450,7 +3467,7 @@ function createMarbleTiltGame() {
     hard: [
       [
         "#########",
-        "#S...O.G#",
+        "#S.....G#",
         "#.###.#.#",
         "#...O.#.#",
         "#.#...#.#",
@@ -3460,7 +3477,7 @@ function createMarbleTiltGame() {
       [
         "##########",
         "#S...#...#",
-        "#.#O.#.#G#",
+        "#.#..#.#G#",
         "#.#..#.#.#",
         "#....O...#",
         "#.######.#",
@@ -3469,7 +3486,7 @@ function createMarbleTiltGame() {
       ],
       [
         "##########",
-        "#S..O....#",
+        "#S.......#",
         "#.##.#.#.#",
         "#....#.#G#",
         "#.O..#...#",
@@ -3479,7 +3496,7 @@ function createMarbleTiltGame() {
       [
         "###########",
         "#S...#....#",
-        "#.#O.#.##.#",
+        "#.#..#.##.#",
         "#.#..#..#.#",
         "#...O...#G#",
         "#.#####...#",
@@ -3489,7 +3506,7 @@ function createMarbleTiltGame() {
       [
         "###########",
         "#S....#..G#",
-        "#.##O.#.#.#",
+        "#.##..#.#.#",
         "#....##.#.#",
         "#.O......##",
         "#...###...#",
@@ -3498,7 +3515,7 @@ function createMarbleTiltGame() {
       [
         "############",
         "#S.....#...#",
-        "#.###O.#.#.#",
+        "#.###..#.#.#",
         "#...#..#.#G#",
         "#.#...O..#.#",
         "#...####...#",
@@ -3507,13 +3524,36 @@ function createMarbleTiltGame() {
       ],
       [
         "############",
-        "#S..O..#..G#",
+        "#S.....#..G#",
+        "#.##.#.#.#.#",
+        "#....#...#.#",
+        "#.O.###..#.#",
+        "#....#.....#",
+        "#.######...#",
+        "############",
+      ],
+      [
+        "#############",
+        "#S....#....G#",
+        "#.##..#.###.#",
+        "#....##...#.#",
+        "#.#O...O#.#.#",
+        "#...###.#...#",
+        "#.#####.###.#",
+        "#...........#",
+        "#############",
+      ],
+    ],
+    chaos: [
+      [
+        "###########",
+        "#S..O...#.G#",
         "#.##.#.#.#.#",
         "#....#...#.#",
         "#.O.###O.#.#",
         "#....#.....#",
         "#.######...#",
-        "############",
+        "###########",
       ],
       [
         "#############",
@@ -3556,17 +3596,18 @@ function createMarbleTiltGame() {
   }
 
   function getLevelSet() {
-    const mode = getDifficultyMode();
-    if (mode === "easy") return levelSets.easy;
-    if (mode === "hard") return levelSets.hard;
+    if (appState.difficulty === "chill" || appState.difficulty === "easy") return levelSets.easy;
+    if (appState.difficulty === "hard") return levelSets.hard;
+    if (appState.difficulty === "chaos") return levelSets.chaos;
     return levelSets.normal;
   }
 
   function getConfig() {
-    const mode = getDifficultyMode();
-    if (mode === "easy") return { accel: 0.2, friction: 0.92, maxSpeed: 4.1 };
-    if (mode === "hard") return { accel: 0.34, friction: 0.958, maxSpeed: 5.9 };
-    return { accel: 0.27, friction: 0.944, maxSpeed: 4.9 };
+    if (appState.difficulty === "chill") return { accel: 0.15, friction: 0.89, maxSpeed: 3.25, bounce: -0.1 };
+    if (appState.difficulty === "easy") return { accel: 0.19, friction: 0.91, maxSpeed: 3.85, bounce: -0.12 };
+    if (appState.difficulty === "hard") return { accel: 0.27, friction: 0.935, maxSpeed: 4.8, bounce: -0.16 };
+    if (appState.difficulty === "chaos") return { accel: 0.31, friction: 0.945, maxSpeed: 5.25, bounce: -0.19 };
+    return { accel: 0.23, friction: 0.922, maxSpeed: 4.3, bounce: -0.14 };
   }
 
   function loadStage(level, preserveScore = false) {
@@ -3635,11 +3676,11 @@ function createMarbleTiltGame() {
 
     let moved = collideAxis(marble.x + marble.vx, marble.y, "x");
     marble.x = moved.x;
-    if (moved.blocked) marble.vx *= -0.28;
+    if (moved.blocked) marble.vx *= config.bounce;
 
     moved = collideAxis(marble.x, marble.y + marble.vy, "y");
     marble.y = moved.y;
-    if (moved.blocked) marble.vy *= -0.28;
+    if (moved.blocked) marble.vy *= config.bounce;
 
     const col = Math.floor(marble.x / tile);
     const row = Math.floor(marble.y / tile);
@@ -11421,6 +11462,2650 @@ function createTowerTacticsGame() {
       running = false;
       if (animationId) cancelAnimationFrame(animationId);
       animationId = null;
+    },
+  };
+}
+
+function createTargetTapGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let target;
+  let hits = 0;
+  let misses = 0;
+  let timeLeft = 0;
+  let lastFrame = 0;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { duration: 30, radius: 40, speed: 132, lives: 4 };
+    if (appState.difficulty === "easy") return { duration: 28, radius: 36, speed: 154, lives: 3 };
+    if (appState.difficulty === "hard") return { duration: 24, radius: 28, speed: 206, lives: 2 };
+    if (appState.difficulty === "chaos") return { duration: 22, radius: 24, speed: 238, lives: 2 };
+    return { duration: 26, radius: 32, speed: 178, lives: 3 };
+  }
+
+  function spawnTarget() {
+    const config = getConfig();
+    const level = 1 + Math.floor(hits / 6);
+    const radius = Math.max(16, config.radius - Math.floor(level / 2) * 2);
+    target = {
+      x: 110 + Math.random() * 500,
+      y: 90 + Math.random() * 220,
+      r: radius,
+      vx: (Math.random() < 0.5 ? -1 : 1) * (config.speed + level * 8),
+      vy: (Math.random() < 0.5 ? -1 : 1) * (config.speed * 0.68 + level * 6),
+    };
+  }
+
+  function updateHud() {
+    shell.hud.hits.textContent = `Hits ${hits}`;
+    shell.hud.misses.textContent = `Misses ${misses}/${getConfig().lives}`;
+    shell.hud.time.textContent = `Time ${Math.max(0, timeLeft).toFixed(1)}s`;
+    refreshLevel();
+  }
+
+  function finish(status) {
+    running = false;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function resetState() {
+    running = false;
+    hits = 0;
+    misses = 0;
+    timeLeft = getConfig().duration;
+    lastFrame = 0;
+    setScore(0);
+    spawnTarget();
+    updateHud();
+    draw();
+  }
+
+  function handleClick(event) {
+    if (!running) return;
+    const rect = shell.canvas.getBoundingClientRect();
+    const scaleX = shell.canvas.width / rect.width;
+    const scaleY = shell.canvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+    const distance = Math.hypot(x - target.x, y - target.y);
+    if (distance <= target.r) {
+      hits += 1;
+      setScore(appState.score + 10 + Math.floor(hits / 3) * 2);
+      timeLeft = Math.min(getConfig().duration + 4, timeLeft + 0.7);
+      setStatus("Bullseye");
+      spawnTarget();
+    } else {
+      misses += 1;
+      setStatus("Miss");
+      if (misses >= getConfig().lives) {
+        finish(`Out of misses - ${hits} hits`);
+      }
+    }
+    updateHud();
+  }
+
+  function update(timestamp) {
+    if (!running) return;
+    if (!lastFrame) lastFrame = timestamp;
+    const delta = Math.min(32, timestamp - lastFrame);
+    lastFrame = timestamp;
+    timeLeft -= delta / 1000;
+    target.x += (target.vx * delta) / 1000;
+    target.y += (target.vy * delta) / 1000;
+    if (target.x < target.r || target.x > 640 - target.r) target.vx *= -1;
+    if (target.y < target.r || target.y > 360 - target.r) target.vy *= -1;
+    if (timeLeft <= 0) {
+      finish(`Time up - ${hits} hits`);
+      return;
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 640, 360);
+    const bg = ctx.createLinearGradient(0, 0, 0, 360);
+    bg.addColorStop(0, "#0b1220");
+    bg.addColorStop(1, "#11263d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 640, 360);
+
+    for (let ring = 5; ring >= 1; ring -= 1) {
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, (target.r * ring) / 5, 0, Math.PI * 2);
+      ctx.fillStyle = ["#ef4444", "#f97316", "#facc15", "#fde68a", "#ffffff"][5 - ring];
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(target.x - target.r - 16, target.y);
+    ctx.lineTo(target.x + target.r + 16, target.y);
+    ctx.moveTo(target.x, target.y - target.r - 16);
+    ctx.lineTo(target.x, target.y + target.r + 16);
+    ctx.stroke();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.fillRect(0, 0, 640, 360);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 30px Trebuchet MS";
+      ctx.fillText("Target Tap", 320, 166);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Click the target before the clock runs out", 320, 198);
+    }
+  }
+
+  function frame(timestamp) {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update(timestamp);
+    draw();
+  }
+
+  return {
+    id: "target",
+    title: "Target Tap",
+    tagline: "Click the moving bullseye",
+    subtitle: "A simple aim trainer that gets faster and tighter as the hits pile up.",
+    description: "Click the moving target, chain hits for more points, and don't burn through your misses.",
+    controls: "Use the mouse or trackpad to click the target.",
+    levelStep: 60,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "hits", label: "Hits 0" },
+          { id: "misses", label: "Misses 0/3" },
+          { id: "time", label: "Time 0.0s" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 640;
+      shell.canvas.height = 360;
+      ctx = shell.canvas.getContext("2d");
+      shell.canvas.addEventListener("click", handleClick);
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      lastFrame = 0;
+      setStatus("Aim steady");
+      frame(0);
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      shell?.canvas?.removeEventListener("click", handleClick);
+    },
+  };
+}
+
+function createCatchCrazeGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let basketX = 320;
+  let items = [];
+  let spawnTimer = 0;
+  let lives = 3;
+  let timeLeft = 0;
+  const keys = { left: false, right: false };
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { basket: 124, speed: 220, spawn: 760, lives: 5, duration: 40 };
+    if (appState.difficulty === "easy") return { basket: 112, speed: 250, spawn: 680, lives: 4, duration: 38 };
+    if (appState.difficulty === "hard") return { basket: 92, speed: 330, spawn: 520, lives: 3, duration: 34 };
+    if (appState.difficulty === "chaos") return { basket: 86, speed: 370, spawn: 450, lives: 2, duration: 32 };
+    return { basket: 102, speed: 288, spawn: 600, lives: 3, duration: 36 };
+  }
+
+  function updateHud() {
+    shell.hud.lives.textContent = `Lives ${lives}`;
+    shell.hud.caught.textContent = `Caught ${Math.floor(appState.score / 10)}`;
+    shell.hud.time.textContent = `Time ${Math.max(0, timeLeft).toFixed(1)}s`;
+    refreshLevel();
+  }
+
+  function spawnItem() {
+    const good = Math.random() > (appState.difficulty === "hard" || appState.difficulty === "chaos" ? 0.74 : 0.82);
+    items.push({
+      x: 40 + Math.random() * 560,
+      y: -20,
+      vy: getConfig().speed + Math.random() * 80,
+      type: good ? "bomb" : "fruit",
+      size: good ? 18 : 16 + Math.random() * 6,
+    });
+  }
+
+  function finish(status) {
+    running = false;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function resetState() {
+    running = false;
+    basketX = 320;
+    items = [];
+    spawnTimer = 0;
+    lives = getConfig().lives;
+    timeLeft = getConfig().duration;
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function update(delta) {
+    if (!running) return;
+    timeLeft -= delta / 1000;
+    if (timeLeft <= 0) {
+      finish(`Round over - ${appState.score} points`);
+      return;
+    }
+
+    const move = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    basketX = clamp(basketX + move * getConfig().speed * 0.9 * (delta / 1000), 50, 590);
+
+    spawnTimer += delta;
+    while (spawnTimer >= getConfig().spawn) {
+      spawnTimer -= getConfig().spawn;
+      spawnItem();
+    }
+
+    const basketWidth = getConfig().basket;
+    const survivors = [];
+    items.forEach((item) => {
+      item.y += item.vy * (delta / 1000);
+      const caught =
+        item.y > 300 &&
+        item.y < 350 &&
+        Math.abs(item.x - basketX) < basketWidth / 2 + item.size / 2;
+      if (caught) {
+        if (item.type === "fruit") {
+          setScore(appState.score + 10);
+          setStatus("Nice catch");
+        } else {
+          lives -= 1;
+          setStatus("Bomb!");
+        }
+        return;
+      }
+      if (item.y > 380) {
+        if (item.type === "fruit") {
+          lives -= 1;
+          setStatus("Dropped one");
+        }
+        return;
+      }
+      survivors.push(item);
+    });
+    items = survivors;
+    if (lives <= 0) {
+      finish(`Out of lives - ${appState.score} points`);
+      return;
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 640, 360);
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(0, 0, 640, 360);
+    ctx.fillStyle = "#172f46";
+    ctx.fillRect(0, 0, 640, 360);
+    ctx.fillStyle = "#203d22";
+    ctx.fillRect(0, 320, 640, 40);
+
+    items.forEach((item) => {
+      if (item.type === "fruit") {
+        ctx.fillStyle = "#f97316";
+        ctx.beginPath();
+        ctx.arc(item.x, item.y, item.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#22c55e";
+        ctx.fillRect(item.x - 2, item.y - item.size - 4, 4, 8);
+      } else {
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath();
+        ctx.arc(item.x, item.y, item.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#fca5a5";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(item.x - 8, item.y - item.size + 3);
+        ctx.lineTo(item.x, item.y - item.size - 9);
+        ctx.lineTo(item.x + 8, item.y - item.size + 3);
+        ctx.stroke();
+      }
+    });
+
+    const basketWidth = getConfig().basket;
+    ctx.fillStyle = "#fbbf24";
+    ctx.fillRect(basketX - basketWidth / 2, 312, basketWidth, 18);
+    ctx.fillStyle = "#92400e";
+    ctx.fillRect(basketX - basketWidth / 2 + 6, 318, basketWidth - 12, 12);
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.24)";
+      ctx.fillRect(0, 0, 640, 360);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 30px Trebuchet MS";
+      ctx.fillText("Catch Craze", 320, 168);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Catch fruit, dodge bombs, survive the round", 320, 198);
+    }
+  }
+
+  function frame(timestamp) {
+    if (!running) {
+      draw();
+      return;
+    }
+    if (!frame.last) frame.last = timestamp;
+    const delta = Math.min(32, timestamp - frame.last);
+    frame.last = timestamp;
+    animationId = requestAnimationFrame(frame);
+    update(delta);
+    draw();
+  }
+
+  return {
+    id: "catch",
+    title: "Catch Craze",
+    tagline: "Fruit catcher with bombs",
+    subtitle: "Slide the basket, scoop up the good stuff, and don't fumble the round.",
+    description: "Catch falling fruit for points and avoid bombs that blow through your lives.",
+    controls: "Move with Left and Right or A and D.",
+    levelStep: 80,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "lives", label: "Lives 3" },
+          { id: "caught", label: "Caught 0" },
+          { id: "time", label: "Time 0.0s" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 640;
+      shell.canvas.height = 360;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      frame.last = 0;
+      running = true;
+      setStatus("Catch clean");
+      frame(0);
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      frame.last = 0;
+      keys.left = false;
+      keys.right = false;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+    },
+  };
+}
+
+function createBalanceBeamGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let position = 0.5;
+  let velocity = 0;
+  let drift = 0;
+  let elapsed = 0;
+  const keys = { left: false, right: false };
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { push: 0.0024, drift: 0.0007, tolerance: 0.04 };
+    if (appState.difficulty === "easy") return { push: 0.0028, drift: 0.001, tolerance: 0.035 };
+    if (appState.difficulty === "hard") return { push: 0.0034, drift: 0.0018, tolerance: 0.028 };
+    if (appState.difficulty === "chaos") return { push: 0.0038, drift: 0.0022, tolerance: 0.024 };
+    return { push: 0.0031, drift: 0.0014, tolerance: 0.032 };
+  }
+
+  function updateHud() {
+    shell.hud.time.textContent = `Time ${elapsed.toFixed(1)}s`;
+    shell.hud.balance.textContent = `Balance ${Math.round(position * 100)}%`;
+    shell.hud.zone.textContent = `Safe zone +/-${Math.round(getConfig().tolerance * 100)}%`;
+    refreshLevel();
+  }
+
+  function resetState() {
+    running = false;
+    position = 0.5;
+    velocity = 0;
+    drift = 0;
+    elapsed = 0;
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function finish(status) {
+    running = false;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function update(delta) {
+    if (!running) return;
+    const config = getConfig();
+    elapsed += delta / 1000;
+    drift += (Math.random() * 2 - 1) * config.drift * delta;
+    drift = clamp(drift, -0.16, 0.16);
+    velocity += drift * 0.0024;
+    velocity += ((keys.right ? 1 : 0) - (keys.left ? 1 : 0)) * config.push * delta;
+    velocity *= 0.986;
+    position += velocity;
+    setScore(Math.floor(elapsed * 12));
+    if (position < 0 || position > 1) {
+      finish(`Tipped off after ${elapsed.toFixed(1)}s`);
+      return;
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 640, 240);
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, 640, 240);
+
+    const barX = 70;
+    const barY = 150;
+    const barWidth = 500;
+    ctx.fillStyle = "#1e293b";
+    ctx.fillRect(barX, barY, barWidth, 18);
+    const safe = getConfig().tolerance * barWidth;
+    ctx.fillStyle = "#1d4ed8";
+    ctx.fillRect(barX + barWidth / 2 - safe, barY, safe * 2, 18);
+    ctx.fillStyle = "#fbbf24";
+    ctx.fillRect(barX + position * barWidth - 18, barY - 14, 36, 46);
+
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(barX + barWidth / 2, barY - 18);
+    ctx.lineTo(barX + barWidth / 2, barY + 36);
+    ctx.stroke();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.18)";
+      ctx.fillRect(0, 0, 640, 240);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 28px Trebuchet MS";
+      ctx.fillText("Balance Beam", 320, 98);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Keep the slider centered as the drift fights you", 320, 126);
+    }
+  }
+
+  function frame(timestamp) {
+    if (!running) {
+      draw();
+      return;
+    }
+    if (!frame.last) frame.last = timestamp;
+    const delta = Math.min(32, timestamp - frame.last);
+    frame.last = timestamp;
+    animationId = requestAnimationFrame(frame);
+    update(delta);
+    draw();
+  }
+
+  return {
+    id: "balance",
+    title: "Balance Beam",
+    tagline: "Stay centered",
+    subtitle: "A tiny stability game where the drift keeps trying to throw you off.",
+    description: "Use left and right to keep the balance marker inside the safe zone for as long as you can.",
+    controls: "Move with Left and Right or A and D.",
+    levelStep: 40,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "time", label: "Time 0.0s" },
+          { id: "balance", label: "Balance 50%" },
+          { id: "zone", label: "Safe zone +/-4%" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 640;
+      shell.canvas.height = 240;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      frame.last = 0;
+      running = true;
+      setStatus("Stay centered");
+      frame(0);
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      frame.last = 0;
+      keys.left = false;
+      keys.right = false;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+    },
+  };
+}
+
+function createSpinSafeGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let needleAngle = 0;
+  let zoneAngle = 0;
+  let speed = 0;
+  let round = 1;
+  let lives = 3;
+  let waiting = false;
+  let resumeTimeout = null;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { zoneSize: 0.9, speed: 0.028, lives: 4 };
+    if (appState.difficulty === "easy") return { zoneSize: 0.74, speed: 0.034, lives: 4 };
+    if (appState.difficulty === "hard") return { zoneSize: 0.48, speed: 0.048, lives: 3 };
+    if (appState.difficulty === "chaos") return { zoneSize: 0.38, speed: 0.057, lives: 2 };
+    return { zoneSize: 0.6, speed: 0.041, lives: 3 };
+  }
+
+  function setupRound() {
+    zoneAngle = Math.random() * Math.PI * 2;
+    needleAngle = Math.random() * Math.PI * 2;
+    speed = getConfig().speed + (round - 1) * 0.003;
+    waiting = false;
+    updateHud();
+  }
+
+  function updateHud() {
+    shell.hud.round.textContent = `Round ${round}`;
+    shell.hud.lives.textContent = `Lives ${lives}`;
+    shell.hud.speed.textContent = `Speed ${speed.toFixed(3)}`;
+    refreshLevel();
+  }
+
+  function resetState() {
+    running = false;
+    if (resumeTimeout) clearTimeout(resumeTimeout);
+    resumeTimeout = null;
+    round = 1;
+    lives = getConfig().lives;
+    setScore(0);
+    setupRound();
+    draw();
+  }
+
+  function finish(status) {
+    running = false;
+    waiting = false;
+    if (resumeTimeout) clearTimeout(resumeTimeout);
+    resumeTimeout = null;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function normalize(angle) {
+    while (angle < 0) angle += Math.PI * 2;
+    while (angle >= Math.PI * 2) angle -= Math.PI * 2;
+    return angle;
+  }
+
+  function withinZone(angle) {
+    const half = getConfig().zoneSize / 2;
+    const diff = Math.atan2(Math.sin(angle - zoneAngle), Math.cos(angle - zoneAngle));
+    return Math.abs(diff) <= half;
+  }
+
+  function stopNeedle() {
+    if (!running || waiting) return;
+    waiting = true;
+    if (withinZone(needleAngle)) {
+      round += 1;
+      setScore(appState.score + 20);
+      setStatus("Locked in");
+      resumeTimeout = window.setTimeout(() => {
+        setupRound();
+      }, 450);
+    } else {
+      lives -= 1;
+      if (lives <= 0) {
+        finish(`Missed the zone on round ${round}`);
+        return;
+      }
+      setStatus("Too early");
+      resumeTimeout = window.setTimeout(() => {
+        setupRound();
+      }, 500);
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 420, 420);
+    ctx.fillStyle = "#08111d";
+    ctx.fillRect(0, 0, 420, 420);
+    ctx.save();
+    ctx.translate(210, 210);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.arc(0, 0, 132, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.arc(0, 0, 132, zoneAngle - getConfig().zoneSize / 2, zoneAngle + getConfig().zoneSize / 2);
+    ctx.stroke();
+
+    ctx.rotate(needleAngle);
+    ctx.strokeStyle = waiting ? "#fbbf24" : "#e2e8f0";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 18);
+    ctx.lineTo(0, -120);
+    ctx.stroke();
+    ctx.restore();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      ctx.fillRect(0, 0, 420, 420);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 30px Trebuchet MS";
+      ctx.fillText("Spin Safe", 210, 188);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Press Space when the needle enters the green zone", 210, 220);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    if (!waiting) {
+      needleAngle = normalize(needleAngle + speed);
+    }
+    draw();
+  }
+
+  return {
+    id: "spin",
+    title: "Spin Safe",
+    tagline: "Stop inside the zone",
+    subtitle: "A quick timing game where the safe arc keeps getting meaner.",
+    description: "Press at the right time to stop the spinning needle inside the green zone.",
+    controls: "Press Space or Enter to stop the needle.",
+    getLevelText: () => String(round),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        square: true,
+        hudItems: [
+          { id: "round", label: "Round 1" },
+          { id: "lives", label: "Lives 3" },
+          { id: "speed", label: "Speed 0.000" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 420;
+      shell.canvas.height = 420;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Wait for the zone");
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      if (resumeTimeout) clearTimeout(resumeTimeout);
+      resumeTimeout = null;
+    },
+    onKeyDown(event) {
+      if ([" ", "Enter"].includes(event.key)) stopNeedle();
+    },
+  };
+}
+
+function createStarSweepGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let player;
+  let stars = [];
+  let mines = [];
+  let lives = 3;
+  let timeLeft = 0;
+  const keys = { left: false, right: false, up: false, down: false };
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { speed: 220, mines: 4, lives: 5, duration: 42 };
+    if (appState.difficulty === "easy") return { speed: 240, mines: 5, lives: 4, duration: 40 };
+    if (appState.difficulty === "hard") return { speed: 290, mines: 7, lives: 3, duration: 34 };
+    if (appState.difficulty === "chaos") return { speed: 320, mines: 8, lives: 2, duration: 30 };
+    return { speed: 265, mines: 6, lives: 3, duration: 36 };
+  }
+
+  function randomSpot(padding = 26) {
+    return {
+      x: padding + Math.random() * (700 - padding * 2),
+      y: padding + Math.random() * (400 - padding * 2),
+    };
+  }
+
+  function resetState() {
+    running = false;
+    player = { x: 350, y: 200 };
+    stars = Array.from({ length: 5 }, () => randomSpot(30));
+    mines = Array.from({ length: getConfig().mines }, () => {
+      const spot = randomSpot(38);
+      return {
+        x: spot.x,
+        y: spot.y,
+        vx: (Math.random() * 2 - 1) * 55,
+        vy: (Math.random() * 2 - 1) * 55,
+      };
+    });
+    lives = getConfig().lives;
+    timeLeft = getConfig().duration;
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function updateHud() {
+    shell.hud.lives.textContent = `Lives ${lives}`;
+    shell.hud.stars.textContent = `Stars ${appState.score}`;
+    shell.hud.time.textContent = `Time ${Math.max(0, timeLeft).toFixed(1)}s`;
+    refreshLevel();
+  }
+
+  function finish(status) {
+    running = false;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function update(delta) {
+    if (!running) return;
+    const config = getConfig();
+    const moveX = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    const moveY = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    player.x = clamp(player.x + moveX * config.speed * (delta / 1000), 18, 702);
+    player.y = clamp(player.y + moveY * config.speed * (delta / 1000), 18, 402);
+    timeLeft -= delta / 1000;
+    if (timeLeft <= 0) {
+      finish(`Collected ${appState.score} stars`);
+      return;
+    }
+
+    mines.forEach((mine) => {
+      mine.x += mine.vx * (delta / 1000);
+      mine.y += mine.vy * (delta / 1000);
+      if (mine.x < 18 || mine.x > 702) mine.vx *= -1;
+      if (mine.y < 18 || mine.y > 402) mine.vy *= -1;
+      if (Math.hypot(player.x - mine.x, player.y - mine.y) < 26) {
+        lives -= 1;
+        player = { x: 350, y: 200 };
+        setStatus("Mine hit");
+      }
+    });
+
+    stars = stars.map((star) => {
+      if (Math.hypot(player.x - star.x, player.y - star.y) < 22) {
+        setScore(appState.score + 1);
+        setStatus("Star grabbed");
+        return randomSpot(30);
+      }
+      return star;
+    });
+
+    if (lives <= 0) {
+      finish(`Ship cracked after ${appState.score} stars`);
+      return;
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 720, 420);
+    ctx.fillStyle = "#050b15";
+    ctx.fillRect(0, 0, 720, 420);
+    for (let star = 0; star < 90; star += 1) {
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.fillRect((star * 73) % 720, (star * 41) % 420, 2, 2);
+    }
+
+    stars.forEach((star) => {
+      ctx.fillStyle = "#facc15";
+      ctx.beginPath();
+      ctx.arc(star.x, star.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    mines.forEach((mine) => {
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath();
+      ctx.arc(mine.x, mine.y, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#fecaca";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(mine.x - 16, mine.y);
+      ctx.lineTo(mine.x + 16, mine.y);
+      ctx.moveTo(mine.x, mine.y - 16);
+      ctx.lineTo(mine.x, mine.y + 16);
+      ctx.stroke();
+    });
+
+    ctx.fillStyle = "#7dd3fc";
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y - 14);
+    ctx.lineTo(player.x + 14, player.y + 14);
+    ctx.lineTo(player.x - 14, player.y + 14);
+    ctx.closePath();
+    ctx.fill();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      ctx.fillRect(0, 0, 720, 420);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 30px Trebuchet MS";
+      ctx.fillText("Star Sweep", 360, 190);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Collect stars and dodge drifting mines", 360, 220);
+    }
+  }
+
+  function frame(timestamp) {
+    if (!running) {
+      draw();
+      return;
+    }
+    if (!frame.last) frame.last = timestamp;
+    const delta = Math.min(32, timestamp - frame.last);
+    frame.last = timestamp;
+    animationId = requestAnimationFrame(frame);
+    update(delta);
+    draw();
+  }
+
+  return {
+    id: "sweep",
+    title: "Star Sweep",
+    tagline: "Collect and dodge",
+    subtitle: "A top-down star scooper with wandering mines and quick movement.",
+    description: "Grab as many stars as you can before the timer ends while weaving around moving mines.",
+    controls: "Move with arrow keys or WASD.",
+    levelStep: 4,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "lives", label: "Lives 3" },
+          { id: "stars", label: "Stars 0" },
+          { id: "time", label: "Time 0.0s" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 720;
+      shell.canvas.height = 420;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      frame.last = 0;
+      running = true;
+      setStatus("Sweep the stars");
+      frame(0);
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      frame.last = 0;
+      keys.left = false;
+      keys.right = false;
+      keys.up = false;
+      keys.down = false;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = true;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = false;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = false;
+    },
+  };
+}
+
+function createMathBlitzGame() {
+  let wrapper;
+  let questionEl;
+  let metaEl;
+  let optionWrap;
+  let running = false;
+  let timerId = null;
+  let timeLeft = 0;
+  let streak = 0;
+  let correct = 0;
+  let currentAnswer = null;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { duration: 50, max: 10, ops: ["+", "-"] };
+    if (appState.difficulty === "easy") return { duration: 45, max: 14, ops: ["+", "-"] };
+    if (appState.difficulty === "hard") return { duration: 35, max: 22, ops: ["+", "-", "*"] };
+    if (appState.difficulty === "chaos") return { duration: 30, max: 28, ops: ["+", "-", "*"] };
+    return { duration: 40, max: 18, ops: ["+", "-", "*"] };
+  }
+
+  function shuffle(values) {
+    return values
+      .map((value) => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map((entry) => entry.value);
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Time ${timeLeft}s | Streak ${streak} | Correct ${correct}`;
+    refreshLevel();
+  }
+
+  function renderChoices(choices) {
+    optionWrap.innerHTML = "";
+    choices.forEach((choice) => {
+      const button = document.createElement("button");
+      button.className = "secondary-button";
+      button.textContent = String(choice);
+      button.style.minHeight = "58px";
+      button.addEventListener("click", () => answer(choice));
+      optionWrap.appendChild(button);
+    });
+  }
+
+  function askQuestion() {
+    const config = getConfig();
+    const a = 1 + Math.floor(Math.random() * config.max);
+    const b = 1 + Math.floor(Math.random() * config.max);
+    const op = config.ops[Math.floor(Math.random() * config.ops.length)];
+    let prompt = "";
+    if (op === "+") {
+      currentAnswer = a + b;
+      prompt = `${a} + ${b}`;
+    } else if (op === "-") {
+      const hi = Math.max(a, b);
+      const lo = Math.min(a, b);
+      currentAnswer = hi - lo;
+      prompt = `${hi} - ${lo}`;
+    } else {
+      const x = 1 + Math.floor(Math.random() * Math.max(4, Math.floor(config.max / 2)));
+      const y = 2 + Math.floor(Math.random() * 7);
+      currentAnswer = x * y;
+      prompt = `${x} × ${y}`;
+    }
+    questionEl.textContent = prompt;
+    const choices = new Set([currentAnswer]);
+    while (choices.size < 4) {
+      const drift = Math.floor(Math.random() * 8) + 1;
+      choices.add(Math.max(0, currentAnswer + (Math.random() < 0.5 ? -drift : drift)));
+    }
+    renderChoices(shuffle([...choices]));
+  }
+
+  function finish(status) {
+    running = false;
+    if (timerId) clearInterval(timerId);
+    timerId = null;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function answer(value) {
+    if (!running) return;
+    if (value === currentAnswer) {
+      correct += 1;
+      streak += 1;
+      setScore(appState.score + 10 + Math.min(20, streak * 2));
+      setStatus("Correct");
+    } else {
+      streak = 0;
+      timeLeft = Math.max(0, timeLeft - 3);
+      setStatus("Wrong");
+    }
+    updateHud();
+    askQuestion();
+  }
+
+  function resetState() {
+    running = false;
+    if (timerId) clearInterval(timerId);
+    timerId = null;
+    timeLeft = getConfig().duration;
+    streak = 0;
+    correct = 0;
+    setScore(0);
+    questionEl.textContent = "Press start";
+    optionWrap.innerHTML = "";
+    updateHud();
+  }
+
+  return {
+    id: "math",
+    title: "Math Blitz",
+    tagline: "Fast answer rush",
+    subtitle: "A timed quiz sprint where every right answer feeds the streak.",
+    description: "Answer quick math questions before the clock runs out. Wrong answers cost time.",
+    controls: "Click the correct answer button.",
+    levelStep: 60,
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Math Blitz</strong>
+            <span class="muted" data-meta>Time 0s | Streak 0 | Correct 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:22px; background:rgba(255,255,255,0.04); display:grid; gap:18px;">
+            <div data-question style="font-size:clamp(2rem,4vw,3.4rem); font-weight:800; text-align:center;">Press start</div>
+            <div data-options style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px;"></div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      questionEl = wrapper.querySelector("[data-question]");
+      metaEl = wrapper.querySelector("[data-meta]");
+      optionWrap = wrapper.querySelector("[data-options]");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Solve fast");
+      askQuestion();
+      timerId = window.setInterval(() => {
+        if (!running) return;
+        timeLeft -= 1;
+        updateHud();
+        if (timeLeft <= 0) {
+          finish(`Time up - ${correct} correct`);
+        }
+      }, 1000);
+    },
+    reset() {
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      if (timerId) clearInterval(timerId);
+      timerId = null;
+      running = false;
+    },
+  };
+}
+
+function createTreasureDigGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let stageLevel = 1;
+  let boardSize = 5;
+  let digsLeft = 0;
+  let treasure = { row: 0, col: 0 };
+  let revealed = new Set();
+  let running = false;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 4, digs: 7 };
+    if (appState.difficulty === "easy") return { size: 5, digs: 8 };
+    if (appState.difficulty === "hard") return { size: 6, digs: 8 };
+    if (appState.difficulty === "chaos") return { size: 7, digs: 8 };
+    return { size: 5, digs: 7 };
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Digs left ${digsLeft} | Found ${appState.score}`;
+    refreshLevel();
+  }
+
+  function hint(row, col) {
+    const distance = Math.abs(row - treasure.row) + Math.abs(col - treasure.col);
+    if (distance === 0) return "X";
+    if (distance === 1) return "Hot";
+    if (distance <= 3) return "Warm";
+    return "Cold";
+  }
+
+  function renderBoard() {
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${boardSize}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    for (let row = 0; row < boardSize; row += 1) {
+      for (let col = 0; col < boardSize; col += 1) {
+        const key = `${row},${col}`;
+        const button = document.createElement("button");
+        button.className = "secondary-button";
+        button.style.minHeight = "64px";
+        button.style.fontWeight = "700";
+        button.textContent = revealed.has(key) ? hint(row, col) : "?";
+        button.disabled = !running || revealed.has(key);
+        button.addEventListener("click", () => dig(row, col));
+        gridEl.appendChild(button);
+      }
+    }
+  }
+
+  function setupStage(level, preserveScore = false) {
+    stageLevel = level;
+    boardSize = getConfig().size + Math.min(2, Math.floor((level - 1) / 3));
+    digsLeft = getConfig().digs + Math.max(0, Math.floor((level - 1) / 4));
+    treasure = {
+      row: Math.floor(Math.random() * boardSize),
+      col: Math.floor(Math.random() * boardSize),
+    };
+    revealed = new Set();
+    running = false;
+    if (!preserveScore) setScore(0);
+    updateHud();
+    renderBoard();
+  }
+
+  function dig(row, col) {
+    if (!running) return;
+    const key = `${row},${col}`;
+    if (revealed.has(key)) return;
+    revealed.add(key);
+    digsLeft -= 1;
+    if (row === treasure.row && col === treasure.col) {
+      setScore(appState.score + 1);
+      setStatus("Treasure found");
+      running = false;
+      renderBoard();
+      window.setTimeout(() => {
+        setupStage(stageLevel + 1, true);
+      }, 500);
+      return;
+    }
+    if (digsLeft <= 0) {
+      running = false;
+      renderBoard();
+      setStatus("No digs left");
+      scheduleAutoReset();
+      return;
+    }
+    setStatus(hint(row, col));
+    updateHud();
+    renderBoard();
+  }
+
+  return {
+    id: "dig",
+    title: "Treasure Dig",
+    tagline: "Hot and cold grid hunt",
+    subtitle: "Dig across the board, read the heat, and find the treasure before the shovel runs out.",
+    description: "Click tiles to hunt for hidden treasure with hot-and-cold clues. Each find advances the stage.",
+    controls: "Click a tile to dig there.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Treasure Dig</strong>
+            <span class="muted" data-meta>Stage 1 | Digs left 0 | Found 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04); display:grid; gap:14px;">
+            <div data-grid></div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      renderBoard();
+      setStatus("Start digging");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+    },
+  };
+}
+
+function createRouteRecallGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let stageLevel = 1;
+  let running = false;
+  let showing = false;
+  let sequence = [];
+  let inputIndex = 0;
+  let cells = [];
+  let timeouts = [];
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 3, flash: 680 };
+    if (appState.difficulty === "easy") return { size: 3, flash: 560 };
+    if (appState.difficulty === "hard") return { size: 4, flash: 410 };
+    if (appState.difficulty === "chaos") return { size: 4, flash: 320 };
+    return { size: 3, flash: 470 };
+  }
+
+  function clearSequenceTimers() {
+    timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+    timeouts = [];
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Sequence ${sequence.length} | Input ${inputIndex}/${sequence.length}`;
+    refreshLevel();
+  }
+
+  function renderGrid() {
+    const size = getConfig().size;
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    cells = [];
+    for (let index = 0; index < size * size; index += 1) {
+      const button = document.createElement("button");
+      button.className = "secondary-button";
+      button.style.aspectRatio = "1 / 1";
+      button.style.minHeight = "72px";
+      button.textContent = "";
+      button.addEventListener("click", () => press(index));
+      cells.push(button);
+      gridEl.appendChild(button);
+    }
+  }
+
+  function flash(index, active) {
+    const button = cells[index];
+    if (!button) return;
+    button.style.background = active ? "rgba(125, 211, 252, 0.55)" : "";
+    button.style.transform = active ? "scale(0.98)" : "";
+  }
+
+  function startStage() {
+    clearSequenceTimers();
+    running = true;
+    showing = true;
+    inputIndex = 0;
+    sequence = Array.from({ length: 2 + stageLevel }, () => Math.floor(Math.random() * cells.length));
+    updateHud();
+    sequence.forEach((value, index) => {
+      const showAt = index * getConfig().flash * 1.25;
+      timeouts.push(window.setTimeout(() => flash(value, true), showAt));
+      timeouts.push(window.setTimeout(() => flash(value, false), showAt + getConfig().flash));
+    });
+    timeouts.push(
+      window.setTimeout(() => {
+        showing = false;
+        setStatus("Repeat the path");
+        updateHud();
+      }, sequence.length * getConfig().flash * 1.25 + 60),
+    );
+  }
+
+  function press(index) {
+    if (!running || showing) return;
+    flash(index, true);
+    window.setTimeout(() => flash(index, false), 120);
+    if (sequence[inputIndex] !== index) {
+      running = false;
+      setStatus("Wrong square");
+      scheduleAutoReset();
+      return;
+    }
+    inputIndex += 1;
+    setScore(appState.score + 5);
+    updateHud();
+    if (inputIndex >= sequence.length) {
+      stageLevel += 1;
+      running = false;
+      setStatus("Sequence cleared");
+      window.setTimeout(() => {
+        startStage();
+      }, 450);
+    }
+  }
+
+  function resetState() {
+    clearSequenceTimers();
+    stageLevel = 1;
+    running = false;
+    showing = false;
+    sequence = [];
+    inputIndex = 0;
+    setScore(0);
+    renderGrid();
+    updateHud();
+  }
+
+  return {
+    id: "recall",
+    title: "Route Recall",
+    tagline: "Remember the flashing path",
+    subtitle: "A grid-memory challenge that stretches the route longer every stage.",
+    description: "Watch the squares flash, then click them back in the same order.",
+    controls: "Click the squares in the same order they flashed.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Route Recall</strong>
+            <span class="muted" data-meta>Stage 1 | Sequence 0 | Input 0/0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04); display:grid; gap:14px;">
+            <div data-grid></div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      resetState();
+    },
+    start() {
+      if (running || showing) return;
+      clearAutoReset();
+      setStatus("Watch closely");
+      startStage();
+    },
+    reset() {
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      showing = false;
+      clearSequenceTimers();
+    },
+  };
+}
+
+function createRhythmRowsGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let notes = [];
+  let spawnTimer = 0;
+  let lives = 3;
+  let combo = 0;
+  let timeLeft = 0;
+  const laneKeys = {
+    a: 0,
+    A: 0,
+    s: 1,
+    S: 1,
+    d: 2,
+    D: 2,
+    f: 3,
+    F: 3,
+  };
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { spawn: 860, speed: 240, lives: 5, duration: 42, window: 24 };
+    if (appState.difficulty === "easy") return { spawn: 760, speed: 280, lives: 4, duration: 40, window: 22 };
+    if (appState.difficulty === "hard") return { spawn: 560, speed: 360, lives: 3, duration: 34, window: 18 };
+    if (appState.difficulty === "chaos") return { spawn: 480, speed: 410, lives: 2, duration: 30, window: 15 };
+    return { spawn: 650, speed: 320, lives: 3, duration: 36, window: 20 };
+  }
+
+  function updateHud() {
+    shell.hud.lives.textContent = `Lives ${lives}`;
+    shell.hud.combo.textContent = `Combo ${combo}`;
+    shell.hud.time.textContent = `Time ${Math.max(0, timeLeft).toFixed(1)}s`;
+    refreshLevel();
+  }
+
+  function resetState() {
+    running = false;
+    notes = [];
+    spawnTimer = 0;
+    lives = getConfig().lives;
+    combo = 0;
+    timeLeft = getConfig().duration;
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function finish(status) {
+    running = false;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function hitLane(lane) {
+    if (!running) return;
+    const hitLine = 340;
+    const windowSize = getConfig().window;
+    const targetIndex = notes.findIndex((note) => note.lane === lane && Math.abs(note.y - hitLine) <= windowSize);
+    if (targetIndex >= 0) {
+      notes.splice(targetIndex, 1);
+      combo += 1;
+      setScore(appState.score + 8 + Math.min(24, combo));
+      setStatus("Hit");
+    } else {
+      combo = 0;
+      lives -= 1;
+      setStatus("Miss");
+      if (lives <= 0) {
+        finish(`Dropped the beat at ${appState.score} points`);
+        return;
+      }
+    }
+    updateHud();
+  }
+
+  function update(delta) {
+    if (!running) return;
+    timeLeft -= delta / 1000;
+    if (timeLeft <= 0) {
+      finish(`Track clear - ${appState.score} points`);
+      return;
+    }
+    spawnTimer += delta;
+    while (spawnTimer >= getConfig().spawn) {
+      spawnTimer -= getConfig().spawn;
+      notes.push({ lane: Math.floor(Math.random() * 4), y: -18 });
+    }
+    notes.forEach((note) => {
+      note.y += getConfig().speed * (delta / 1000);
+    });
+    notes = notes.filter((note) => {
+      if (note.y > 390) {
+        combo = 0;
+        lives -= 1;
+        setStatus("Late miss");
+        return false;
+      }
+      return true;
+    });
+    if (lives <= 0) {
+      finish(`Dropped the beat at ${appState.score} points`);
+      return;
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 520, 400);
+    ctx.fillStyle = "#08111d";
+    ctx.fillRect(0, 0, 520, 400);
+    const laneWidth = 130;
+    for (let lane = 0; lane < 4; lane += 1) {
+      ctx.fillStyle = lane % 2 === 0 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.08)";
+      ctx.fillRect(lane * laneWidth + 2, 0, laneWidth - 4, 400);
+    }
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(0, 336, 520, 6);
+    notes.forEach((note) => {
+      ctx.fillStyle = ["#f472b6", "#60a5fa", "#facc15", "#34d399"][note.lane];
+      ctx.fillRect(note.lane * laneWidth + 18, note.y, laneWidth - 36, 18);
+    });
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "700 18px Trebuchet MS";
+    ["A", "S", "D", "F"].forEach((label, lane) => {
+      ctx.fillText(label, lane * laneWidth + 58, 374);
+    });
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(0, 0, 520, 400);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 28px Trebuchet MS";
+      ctx.fillText("Rhythm Rows", 260, 178);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Hit notes with A S D F as they reach the line", 260, 206);
+    }
+  }
+
+  function frame(timestamp) {
+    if (!running) {
+      draw();
+      return;
+    }
+    if (!frame.last) frame.last = timestamp;
+    const delta = Math.min(32, timestamp - frame.last);
+    frame.last = timestamp;
+    animationId = requestAnimationFrame(frame);
+    update(delta);
+    draw();
+  }
+
+  return {
+    id: "rhythm",
+    title: "Rhythm Rows",
+    tagline: "Tiny four-lane note game",
+    subtitle: "Hit falling notes on time and keep the combo alive.",
+    description: "A simple rhythm game with four lanes, escalating note speed, and combo scoring.",
+    controls: "Hit lanes with A, S, D, and F.",
+    levelStep: 90,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "lives", label: "Lives 3" },
+          { id: "combo", label: "Combo 0" },
+          { id: "time", label: "Time 0.0s" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 520;
+      shell.canvas.height = 400;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      frame.last = 0;
+      running = true;
+      setStatus("Find the rhythm");
+      frame(0);
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      frame.last = 0;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (laneKeys[event.key] !== undefined) {
+        hitLane(laneKeys[event.key]);
+      }
+    },
+  };
+}
+
+function createTileTrailGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let stageLevel = 1;
+  let running = false;
+  let board = [];
+  let size = 4;
+  let player = { row: 0, col: 0 };
+  let painted = new Set();
+  let walkable = 0;
+  let movesLeft = 0;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 4, holes: 1, extraMoves: 5 };
+    if (appState.difficulty === "easy") return { size: 4, holes: 2, extraMoves: 4 };
+    if (appState.difficulty === "hard") return { size: 5, holes: 4, extraMoves: 3 };
+    if (appState.difficulty === "chaos") return { size: 6, holes: 6, extraMoves: 2 };
+    return { size: 5, holes: 3, extraMoves: 4 };
+  }
+
+  function keyFor(row, col) {
+    return `${row},${col}`;
+  }
+
+  function connected(candidate) {
+    const queue = [[0, 0]];
+    const seen = new Set([keyFor(0, 0)]);
+    while (queue.length) {
+      const [row, col] = queue.shift();
+      [
+        [row + 1, col],
+        [row - 1, col],
+        [row, col + 1],
+        [row, col - 1],
+      ].forEach(([nextRow, nextCol]) => {
+        if (!candidate[nextRow]?.[nextCol] || candidate[nextRow][nextCol] === "#") return;
+        const key = keyFor(nextRow, nextCol);
+        if (seen.has(key)) return;
+        seen.add(key);
+        queue.push([nextRow, nextCol]);
+      });
+    }
+    let total = 0;
+    candidate.forEach((row) => row.forEach((cell) => {
+      if (cell !== "#") total += 1;
+    }));
+    return seen.size === total;
+  }
+
+  function buildBoard(level) {
+    const config = getConfig();
+    size = config.size + Math.min(1, Math.floor((level - 1) / 4));
+    let candidate;
+    do {
+      candidate = Array.from({ length: size }, () => Array.from({ length: size }, () => "."));
+      const totalHoles = Math.min(size * size - 2, config.holes + Math.floor((level - 1) / 2));
+      let placed = 0;
+      while (placed < totalHoles) {
+        const row = Math.floor(Math.random() * size);
+        const col = Math.floor(Math.random() * size);
+        if ((row === 0 && col === 0) || candidate[row][col] === "#") continue;
+        candidate[row][col] = "#";
+        placed += 1;
+      }
+    } while (!connected(candidate));
+    board = candidate;
+    player = { row: 0, col: 0 };
+    painted = new Set([keyFor(0, 0)]);
+    walkable = board.flat().filter((cell) => cell !== "#").length;
+    movesLeft = walkable + getConfig().extraMoves;
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Painted ${painted.size}/${walkable} | Moves ${movesLeft}`;
+    refreshLevel();
+  }
+
+  function renderBoard() {
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    board.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        const tile = document.createElement("div");
+        tile.style.aspectRatio = "1 / 1";
+        tile.style.borderRadius = "16px";
+        tile.style.display = "grid";
+        tile.style.placeItems = "center";
+        tile.style.fontWeight = "800";
+        tile.style.border = "1px solid rgba(255,255,255,0.08)";
+        if (cell === "#") {
+          tile.style.background = "rgba(0,0,0,0.4)";
+          tile.textContent = "";
+        } else if (player.row === rowIndex && player.col === colIndex) {
+          tile.style.background = "rgba(96, 165, 250, 0.45)";
+          tile.textContent = "P";
+        } else if (painted.has(keyFor(rowIndex, colIndex))) {
+          tile.style.background = "rgba(250, 204, 21, 0.35)";
+          tile.textContent = "";
+        } else {
+          tile.style.background = "rgba(255,255,255,0.05)";
+          tile.textContent = "";
+        }
+        gridEl.appendChild(tile);
+      });
+    });
+  }
+
+  function setupStage(level, preserveScore = false) {
+    stageLevel = level;
+    buildBoard(level);
+    running = false;
+    if (!preserveScore) setScore(0);
+    updateHud();
+    renderBoard();
+  }
+
+  function move(dx, dy) {
+    if (!running) return;
+    const nextRow = player.row + dy;
+    const nextCol = player.col + dx;
+    if (!board[nextRow]?.[nextCol] || board[nextRow][nextCol] === "#") return;
+    player = { row: nextRow, col: nextCol };
+    painted.add(keyFor(nextRow, nextCol));
+    movesLeft -= 1;
+    if (painted.size >= walkable) {
+      setScore(appState.score + 1);
+      running = false;
+      setStatus("Trail complete");
+      renderBoard();
+      window.setTimeout(() => {
+        setupStage(stageLevel + 1, true);
+      }, 450);
+      return;
+    }
+    if (movesLeft <= 0) {
+      running = false;
+      setStatus("Out of moves");
+      renderBoard();
+      scheduleAutoReset();
+      return;
+    }
+    setStatus("Keep painting");
+    updateHud();
+    renderBoard();
+  }
+
+  return {
+    id: "trail",
+    title: "Tile Trail",
+    tagline: "Paint the board",
+    subtitle: "Walk the grid, cover the tiles, and budget your pathing.",
+    description: "Move across the board to paint every safe tile before you run out of moves.",
+    controls: "Use arrow keys or WASD to move one tile at a time.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Tile Trail</strong>
+            <span class="muted" data-meta>Stage 1 | Painted 0/0 | Moves 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04); display:grid; gap:14px;">
+            <div data-grid></div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      renderBoard();
+      setStatus("Paint the board");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) move(-1, 0);
+      if (["ArrowRight", "d", "D"].includes(event.key)) move(1, 0);
+      if (["ArrowUp", "w", "W"].includes(event.key)) move(0, -1);
+      if (["ArrowDown", "s", "S"].includes(event.key)) move(0, 1);
+    },
+  };
+}
+
+function createJetpackGapGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let player;
+  let walls = [];
+  let spawnTimer = 0;
+  const keys = { thrust: false };
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { gap: 168, speed: 165, gravity: 540, thrust: -760 };
+    if (appState.difficulty === "easy") return { gap: 154, speed: 182, gravity: 590, thrust: -800 };
+    if (appState.difficulty === "hard") return { gap: 122, speed: 228, gravity: 680, thrust: -900 };
+    if (appState.difficulty === "chaos") return { gap: 108, speed: 252, gravity: 730, thrust: -950 };
+    return { gap: 138, speed: 202, gravity: 630, thrust: -850 };
+  }
+
+  function updateHud() {
+    shell.hud.score.textContent = `Score ${appState.score}`;
+    shell.hud.gap.textContent = `Gap ${getConfig().gap}`;
+    shell.hud.speed.textContent = `Speed ${Math.round(getConfig().speed)}`;
+    refreshLevel();
+  }
+
+  function resetState() {
+    running = false;
+    player = { x: 120, y: 190, vy: 0 };
+    walls = [];
+    spawnTimer = 0;
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function finish(status) {
+    running = false;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function update(delta) {
+    if (!running) return;
+    player.vy += getConfig().gravity * (delta / 1000);
+    if (keys.thrust) {
+      player.vy += getConfig().thrust * (delta / 1000);
+    }
+    player.y += player.vy * (delta / 1000);
+    spawnTimer += delta;
+    while (spawnTimer >= 1100) {
+      spawnTimer -= 1100;
+      walls.push({
+        x: 700,
+        gapY: 90 + Math.random() * 180,
+        passed: false,
+      });
+    }
+    walls.forEach((wall) => {
+      wall.x -= getConfig().speed * (delta / 1000);
+      if (!wall.passed && wall.x < player.x) {
+        wall.passed = true;
+        setScore(appState.score + 1);
+      }
+      const topHeight = wall.gapY - getConfig().gap / 2;
+      const bottomY = wall.gapY + getConfig().gap / 2;
+      const collides =
+        player.x + 14 > wall.x &&
+        player.x - 14 < wall.x + 52 &&
+        (player.y - 14 < topHeight || player.y + 14 > bottomY);
+      if (collides) {
+        finish(`Clipped a wall at ${appState.score}`);
+      }
+    });
+    walls = walls.filter((wall) => wall.x > -60);
+    if (player.y < 12 || player.y > 348) {
+      finish(`Lost the lane at ${appState.score}`);
+      return;
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 720, 360);
+    const bg = ctx.createLinearGradient(0, 0, 720, 360);
+    bg.addColorStop(0, "#0f172a");
+    bg.addColorStop(1, "#1d4ed8");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 720, 360);
+    walls.forEach((wall) => {
+      const topHeight = wall.gapY - getConfig().gap / 2;
+      const bottomY = wall.gapY + getConfig().gap / 2;
+      ctx.fillStyle = "#38bdf8";
+      ctx.fillRect(wall.x, 0, 52, topHeight);
+      ctx.fillRect(wall.x, bottomY, 52, 360 - bottomY);
+    });
+    ctx.fillStyle = "#facc15";
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fb923c";
+    ctx.fillRect(player.x - 16, player.y - 6, 8, 12);
+    if (keys.thrust && running) {
+      ctx.fillStyle = "#f97316";
+      ctx.beginPath();
+      ctx.moveTo(player.x - 18, player.y + 8);
+      ctx.lineTo(player.x - 34, player.y);
+      ctx.lineTo(player.x - 18, player.y - 8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(0, 0, 720, 360);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 30px Trebuchet MS";
+      ctx.fillText("Jetpack Gap", 360, 164);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Hold thrust to stay inside the moving gaps", 360, 194);
+    }
+  }
+
+  function frame(timestamp) {
+    if (!running) {
+      draw();
+      return;
+    }
+    if (!frame.last) frame.last = timestamp;
+    const delta = Math.min(32, timestamp - frame.last);
+    frame.last = timestamp;
+    animationId = requestAnimationFrame(frame);
+    update(delta);
+    draw();
+  }
+
+  return {
+    id: "jetpack",
+    title: "Jetpack Gap",
+    tagline: "Hold thrust, stay in the lane",
+    subtitle: "A tiny side-scroller where you feather the lift and slip through wall gaps.",
+    description: "Use thrust to float up and ease off to fall, threading the jetpack runner through each gap.",
+    controls: "Hold Space, W, or Up to thrust upward.",
+    levelStep: 6,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "score", label: "Score 0" },
+          { id: "gap", label: "Gap 0" },
+          { id: "speed", label: "Speed 0" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 720;
+      shell.canvas.height = 360;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      frame.last = 0;
+      running = true;
+      setStatus("Feather the thrust");
+      frame(0);
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      frame.last = 0;
+      keys.thrust = false;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowUp", "w", "W", " "].includes(event.key)) keys.thrust = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowUp", "w", "W", " "].includes(event.key)) keys.thrust = false;
+    },
+  };
+}
+
+function createRouteMemoryButton(label) {
+  const button = document.createElement("button");
+  button.className = "secondary-button";
+  button.style.aspectRatio = "1 / 1";
+  button.style.minHeight = "72px";
+  button.textContent = label;
+  return button;
+}
+
+function createTargetOrZoneColor(index) {
+  return ["#f472b6", "#60a5fa", "#facc15", "#34d399"][index % 4];
+}
+
+function createColorGatesGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let lane = 1;
+  let colorIndex = 0;
+  let gates = [];
+  let spawnTimer = 0;
+  let lives = 3;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { speed: 160, spawn: 1250, lives: 4 };
+    if (appState.difficulty === "easy") return { speed: 182, spawn: 1130, lives: 4 };
+    if (appState.difficulty === "hard") return { speed: 232, spawn: 920, lives: 3 };
+    if (appState.difficulty === "chaos") return { speed: 260, spawn: 820, lives: 2 };
+    return { speed: 206, spawn: 1020, lives: 3 };
+  }
+
+  function updateHud() {
+    shell.hud.lives.textContent = `Lives ${lives}`;
+    shell.hud.lane.textContent = `Lane ${lane + 1}`;
+    shell.hud.color.textContent = `Color ${["Pink", "Blue", "Gold"][colorIndex]}`;
+    refreshLevel();
+  }
+
+  function resetState() {
+    running = false;
+    lane = 1;
+    colorIndex = 0;
+    gates = [];
+    spawnTimer = 0;
+    lives = getConfig().lives;
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function finish(status) {
+    running = false;
+    setStatus(status);
+    scheduleAutoReset();
+  }
+
+  function update(delta) {
+    if (!running) return;
+    spawnTimer += delta;
+    while (spawnTimer >= getConfig().spawn) {
+      spawnTimer -= getConfig().spawn;
+      gates.push({ y: -28, safeLane: Math.floor(Math.random() * 3), colorIndex: Math.floor(Math.random() * 3), passed: false });
+    }
+    gates.forEach((gate) => {
+      gate.y += getConfig().speed * (delta / 1000);
+      if (!gate.passed && gate.y > 290) {
+        gate.passed = true;
+        if (gate.safeLane === lane && gate.colorIndex === colorIndex) {
+          setScore(appState.score + 1);
+          setStatus("Matched");
+        } else {
+          lives -= 1;
+          setStatus("Wrong gate");
+        }
+      }
+    });
+    gates = gates.filter((gate) => gate.y < 420);
+    if (lives <= 0) {
+      finish(`Gate jam at ${appState.score}`);
+      return;
+    }
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 540, 420);
+    ctx.fillStyle = "#08111d";
+    ctx.fillRect(0, 0, 540, 420);
+    const laneWidth = 180;
+    for (let index = 0; index < 3; index += 1) {
+      ctx.fillStyle = index % 2 === 0 ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.08)";
+      ctx.fillRect(index * laneWidth, 0, laneWidth, 420);
+    }
+
+    gates.forEach((gate) => {
+      const gateColor = ["#f472b6", "#60a5fa", "#facc15"][gate.colorIndex];
+      for (let gateLane = 0; gateLane < 3; gateLane += 1) {
+        if (gateLane === gate.safeLane) continue;
+        ctx.fillStyle = gateColor;
+        ctx.fillRect(gateLane * laneWidth + 10, gate.y, laneWidth - 20, 24);
+      }
+    });
+
+    ctx.fillStyle = ["#f472b6", "#60a5fa", "#facc15"][colorIndex];
+    ctx.beginPath();
+    ctx.arc(laneWidth * lane + laneWidth / 2, 360, 26, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      ctx.fillRect(0, 0, 540, 420);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 28px Trebuchet MS";
+      ctx.fillText("Color Gates", 270, 190);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Match both the safe lane and the gate color", 270, 220);
+    }
+  }
+
+  function frame(timestamp) {
+    if (!running) {
+      draw();
+      return;
+    }
+    if (!frame.last) frame.last = timestamp;
+    const delta = Math.min(32, timestamp - frame.last);
+    frame.last = timestamp;
+    animationId = requestAnimationFrame(frame);
+    update(delta);
+    draw();
+  }
+
+  return {
+    id: "gates",
+    title: "Color Gates",
+    tagline: "Lane and color match",
+    subtitle: "A tiny reflex game where both your lane and color choice matter.",
+    description: "Shift between three lanes and cycle your color so you pass through the right gate each time.",
+    controls: "Left and Right change lane. Space cycles color.",
+    levelStep: 5,
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "lives", label: "Lives 3" },
+          { id: "lane", label: "Lane 2" },
+          { id: "color", label: "Color Pink" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 540;
+      shell.canvas.height = 420;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      frame.last = 0;
+      running = true;
+      setStatus("Match the gate");
+      frame(0);
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      frame.last = 0;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) lane = Math.max(0, lane - 1);
+      if (["ArrowRight", "d", "D"].includes(event.key)) lane = Math.min(2, lane + 1);
+      if (event.key === " ") colorIndex = (colorIndex + 1) % 3;
+      updateHud();
+    },
+  };
+}
+
+function createSlideQuestGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let running = false;
+  let stageLevel = 1;
+  let size = 4;
+  let board = [];
+  let moves = 0;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 3, shuffle: 18 };
+    if (appState.difficulty === "easy") return { size: 4, shuffle: 28 };
+    if (appState.difficulty === "hard") return { size: 5, shuffle: 46 };
+    if (appState.difficulty === "chaos") return { size: 5, shuffle: 62 };
+    return { size: 4, shuffle: 36 };
+  }
+
+  function blankIndex() {
+    return board.indexOf(0);
+  }
+
+  function solved() {
+    return board.every((value, index) => value === (index + 1) % (size * size));
+  }
+
+  function moveBlankBy(dx, dy) {
+    const blank = blankIndex();
+    const row = Math.floor(blank / size);
+    const col = blank % size;
+    const nextRow = row + dy;
+    const nextCol = col + dx;
+    if (nextRow < 0 || nextRow >= size || nextCol < 0 || nextCol >= size) return false;
+    const swapIndex = nextRow * size + nextCol;
+    [board[blank], board[swapIndex]] = [board[swapIndex], board[blank]];
+    return true;
+  }
+
+  function shuffleBoard() {
+    const config = getConfig();
+    size = config.size;
+    board = Array.from({ length: size * size }, (_, index) => (index + 1) % (size * size));
+    for (let step = 0; step < config.shuffle + stageLevel * 6; step += 1) {
+      const moveset = shuffle([
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]);
+      moveset.some(([dx, dy]) => moveBlankBy(dx, dy));
+    }
+    if (solved()) moveBlankBy(-1, 0) || moveBlankBy(0, -1);
+  }
+
+  function shuffle(values) {
+    return values
+      .map((value) => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map((entry) => entry.value);
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Size ${size}x${size} | Moves ${moves}`;
+    refreshLevel();
+  }
+
+  function renderBoard() {
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    board.forEach((value, index) => {
+      const button = document.createElement("button");
+      button.className = "secondary-button";
+      button.style.aspectRatio = "1 / 1";
+      button.style.minHeight = "62px";
+      button.style.fontSize = "1.1rem";
+      button.style.fontWeight = "800";
+      button.textContent = value ? String(value) : "";
+      button.disabled = !running || value === 0;
+      button.style.opacity = value === 0 ? "0.25" : "1";
+      button.addEventListener("click", () => clickTile(index));
+      gridEl.appendChild(button);
+    });
+  }
+
+  function clickTile(index) {
+    if (!running) return;
+    const blank = blankIndex();
+    const row = Math.floor(index / size);
+    const col = index % size;
+    const blankRow = Math.floor(blank / size);
+    const blankCol = blank % size;
+    if (Math.abs(row - blankRow) + Math.abs(col - blankCol) !== 1) return;
+    [board[index], board[blank]] = [board[blank], board[index]];
+    moves += 1;
+    setScore(Math.max(0, stageLevel * 120 - moves * 2));
+    if (solved()) {
+      running = false;
+      setStatus("Puzzle solved");
+      renderBoard();
+      window.setTimeout(() => setupStage(stageLevel + 1, true), 450);
+      return;
+    }
+    updateHud();
+    renderBoard();
+  }
+
+  function setupStage(level, preserveScore = false) {
+    stageLevel = level;
+    moves = 0;
+    shuffleBoard();
+    running = false;
+    if (!preserveScore) setScore(0);
+    updateHud();
+    renderBoard();
+  }
+
+  return {
+    id: "slide",
+    title: "Slide Quest",
+    tagline: "Sliding number puzzle",
+    subtitle: "Click tiles into the empty space and restore the board order.",
+    description: "A sliding-tile puzzle that grows nastier as the stage count rises.",
+    controls: "Click a tile next to the blank space, or use arrow keys to slide.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Slide Quest</strong>
+            <span class="muted" data-meta>Stage 1 | Size 0x0 | Moves 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04); display:grid; gap:14px;">
+            <div data-grid></div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      renderBoard();
+      setStatus("Slide the tiles");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+    },
+    onKeyDown(event) {
+      if (!running) return;
+      let moved = false;
+      if (event.key === "ArrowLeft") moved = moveBlankBy(1, 0);
+      if (event.key === "ArrowRight") moved = moveBlankBy(-1, 0);
+      if (event.key === "ArrowUp") moved = moveBlankBy(0, 1);
+      if (event.key === "ArrowDown") moved = moveBlankBy(0, -1);
+      if (!moved) return;
+      if (solved()) {
+        running = false;
+        setStatus("Puzzle solved");
+        renderBoard();
+        window.setTimeout(() => setupStage(stageLevel + 1, true), 450);
+        return;
+      }
+      moves += 1;
+      setScore(Math.max(0, stageLevel * 120 - moves * 2));
+      updateHud();
+      renderBoard();
+    },
+  };
+}
+
+function createPipeTwistGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let running = false;
+  let stageLevel = 1;
+  let size = 5;
+  let board = [];
+  let source = { row: 0, col: 0 };
+  let sink = { row: 0, col: 0 };
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 4 };
+    if (appState.difficulty === "easy") return { size: 5 };
+    if (appState.difficulty === "hard") return { size: 6 };
+    if (appState.difficulty === "chaos") return { size: 7 };
+    return { size: 5 };
+  }
+
+  function keyFor(row, col) {
+    return `${row},${col}`;
+  }
+
+  function pathToPieces(path) {
+    const map = new Map(path.map(([row, col]) => [keyFor(row, col), true]));
+    return Array.from({ length: size }, (_, row) =>
+      Array.from({ length: size }, (_, col) => {
+        if (!map.has(keyFor(row, col))) {
+          return { type: Math.random() < 0.5 ? "straight" : "corner", rotation: Math.floor(Math.random() * 4), locked: false, required: false };
+        }
+        const index = path.findIndex(([pathRow, pathCol]) => pathRow === row && pathCol === col);
+        const prev = path[index - 1];
+        const next = path[index + 1];
+        if (!prev) return { type: "end", rotation: 1, locked: true, required: true };
+        if (!next) return { type: "end", rotation: 3, locked: true, required: true };
+        const from = [row - prev[0], col - prev[1]];
+        const to = [next[0] - row, next[1] - col];
+        const dirs = `${from.join(",")}|${to.join(",")}`;
+        if (dirs.includes("0,1") && dirs.includes("0,-1")) return { type: "straight", rotation: 1, locked: false, required: true };
+        if (dirs.includes("1,0") && dirs.includes("-1,0")) return { type: "straight", rotation: 0, locked: false, required: true };
+        if ((dirs.includes("0,1") && dirs.includes("1,0")) || (dirs.includes("0,-1") && dirs.includes("-1,0"))) return { type: "corner", rotation: 0, locked: false, required: true };
+        if ((dirs.includes("0,1") && dirs.includes("-1,0")) || (dirs.includes("0,-1") && dirs.includes("1,0"))) return { type: "corner", rotation: 1, locked: false, required: true };
+        if ((dirs.includes("0,-1") && dirs.includes("1,0")) || (dirs.includes("0,1") && dirs.includes("-1,0"))) return { type: "corner", rotation: 2, locked: false, required: true };
+        return { type: "corner", rotation: 3, locked: false, required: true };
+      }),
+    );
+  }
+
+  function getDirs(cell) {
+    const rotation = ((cell.rotation % 4) + 4) % 4;
+    if (cell.type === "straight") return rotation % 2 === 0 ? ["up", "down"] : ["left", "right"];
+    if (cell.type === "corner") return [["right", "down"], ["up", "right"], ["left", "up"], ["down", "left"]][rotation];
+    if (cell.type === "end") return [["up"], ["right"], ["down"], ["left"]][rotation];
+    return [];
+  }
+
+  function charFor(cell) {
+    const rotation = ((cell.rotation % 4) + 4) % 4;
+    if (cell.type === "straight") return rotation % 2 === 0 ? "│" : "─";
+    if (cell.type === "corner") return ["┌", "└", "┘", "┐"][rotation];
+    return cell.locked && cell === board[source.row][source.col] ? "S" : "E";
+  }
+
+  function randomPath() {
+    source = { row: Math.floor(Math.random() * size), col: 0 };
+    sink = { row: Math.floor(Math.random() * size), col: size - 1 };
+    const path = [[source.row, source.col]];
+    let row = source.row;
+    for (let col = 1; col < size; col += 1) {
+      if (Math.random() < 0.55) {
+        const targetRow = clamp(row + (Math.random() < 0.5 ? -1 : 1) * (1 + Math.floor(Math.random() * 2)), 0, size - 1);
+        const step = targetRow > row ? 1 : -1;
+        while (row !== targetRow) {
+          row += step;
+          path.push([row, col - 1]);
+        }
+      }
+      path.push([row, col]);
+    }
+    sink = { row, col: size - 1 };
+    return path.filter((entry, index) => index === 0 || entry[0] !== path[index - 1][0] || entry[1] !== path[index - 1][1]);
+  }
+
+  function scrambleBoard() {
+    size = getConfig().size + Math.min(1, Math.floor((stageLevel - 1) / 3));
+    board = pathToPieces(randomPath());
+    board[source.row][source.col].rotation = 1;
+    board[sink.row][sink.col].rotation = 3;
+    board.forEach((row) =>
+      row.forEach((cell) => {
+        if (!cell.locked) cell.rotation = (cell.rotation + 1 + Math.floor(Math.random() * 3)) % 4;
+      }),
+    );
+  }
+
+  function solved() {
+    const queue = [[source.row, source.col]];
+    const seen = new Set([keyFor(source.row, source.col)]);
+    const opposite = { up: "down", down: "up", left: "right", right: "left" };
+    const deltas = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+    while (queue.length) {
+      const [row, col] = queue.shift();
+      getDirs(board[row][col]).forEach((dir) => {
+        const [dy, dx] = deltas[dir];
+        const nextRow = row + dy;
+        const nextCol = col + dx;
+        const next = board[nextRow]?.[nextCol];
+        if (!next) return;
+        if (!getDirs(next).includes(opposite[dir])) return;
+        const key = keyFor(nextRow, nextCol);
+        if (seen.has(key)) return;
+        seen.add(key);
+        queue.push([nextRow, nextCol]);
+      });
+    }
+    if (!seen.has(keyFor(sink.row, sink.col))) return false;
+    for (let rowIndex = 0; rowIndex < board.length; rowIndex += 1) {
+      for (let colIndex = 0; colIndex < board[rowIndex].length; colIndex += 1) {
+        if (board[rowIndex][colIndex].required && !seen.has(keyFor(rowIndex, colIndex))) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Size ${size}x${size} | Score ${appState.score}`;
+    refreshLevel();
+  }
+
+  function renderBoard() {
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    board.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        const button = document.createElement("button");
+        button.className = "secondary-button";
+        button.style.aspectRatio = "1 / 1";
+        button.style.minHeight = "58px";
+        button.style.fontSize = "1.4rem";
+        button.style.fontWeight = "800";
+        button.textContent = rowIndex === source.row && colIndex === source.col ? "S" : rowIndex === sink.row && colIndex === sink.col ? "E" : charFor(cell);
+        button.disabled = !running || cell.locked;
+        button.addEventListener("click", () => rotateCell(rowIndex, colIndex));
+        gridEl.appendChild(button);
+      });
+    });
+  }
+
+  function rotateCell(row, col) {
+    if (!running || board[row][col].locked) return;
+    board[row][col].rotation = (board[row][col].rotation + 1) % 4;
+    renderBoard();
+    if (solved()) {
+      running = false;
+      setScore(appState.score + 1);
+      setStatus("Pipe connected");
+      window.setTimeout(() => setupStage(stageLevel + 1, true), 450);
+    }
+  }
+
+  function setupStage(level, preserveScore = false) {
+    stageLevel = level;
+    scrambleBoard();
+    running = false;
+    if (!preserveScore) setScore(0);
+    updateHud();
+    renderBoard();
+  }
+
+  return {
+    id: "pipes",
+    title: "Pipe Twist",
+    tagline: "Rotate to connect",
+    subtitle: "Turn the pipe pieces until the source flows into the sink.",
+    description: "Rotate the loose pipe pieces to connect the source on the left to the sink on the right.",
+    controls: "Click a pipe tile to rotate it.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Pipe Twist</strong>
+            <span class="muted" data-meta>Stage 1 | Size 0x0 | Score 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04); display:grid; gap:14px;">
+            <div data-grid></div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      renderBoard();
+      setStatus("Connect the pipe");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
     },
   };
 }

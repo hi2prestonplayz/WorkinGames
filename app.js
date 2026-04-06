@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260405c";
+const BUILD_VERSION = "20260406j";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -127,9 +127,9 @@ const DIFFICULTY_PRESETS = {
 };
 
 const GAME_CATEGORIES = [
-  { label: "Action", ids: ["runner", "space", "tower", "hopper", "dodge", "snout", "maze", "pong", "flappy"] },
-  { label: "Arcade", ids: ["snake", "breakout", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots"] },
-  { label: "Puzzle", ids: ["memory", "merge", "vault", "flood", "lights", "crates", "mines", "hangman", "scramble", "code"] },
+  { label: "Action", ids: ["runner", "space", "tower", "cannon", "knife", "lander", "orb", "tunnel", "hopper", "dodge", "snout", "maze", "pong", "flappy"] },
+  { label: "Arcade", ids: ["snake", "breakout", "blockdrop", "hoop", "plinko", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots"] },
+  { label: "Puzzle", ids: ["memory", "merge", "vault", "cups", "marble", "flood", "lights", "crates", "mines", "hangman", "scramble", "code"] },
 ];
 
 const els = {
@@ -177,6 +177,14 @@ const games = {
   flappy: createFlappyGame(),
   runner: createRunnerGame(),
   breakout: createBreakoutGame(),
+  blockdrop: createBlockDropGame(),
+  cannon: createCannonLaunchGame(),
+  knife: createKnifeFlipGame(),
+  lander: createRocketLanderGame(),
+  orb: createOrbDodgeGame(),
+  tunnel: createTunnelGlideGame(),
+  hoop: createHoopShotGame(),
+  plinko: createPlinkoDropGame(),
   pong: createPongGame(),
   hopper: createLaneHopperGame(),
   dodge: createDodgeDriftGame(),
@@ -184,6 +192,8 @@ const games = {
   tower: createTowerTacticsGame(),
   stacker: createStackerGame(),
   vault: createNumberVaultGame(),
+  cups: createTreasureCupsGame(),
+  marble: createMarbleTiltGame(),
   flood: createColorFloodGame(),
   lights: createLightsOutGame(),
   crates: createCrateQuestGame(),
@@ -952,6 +962,2441 @@ function createBreakoutGame() {
   };
 }
 
+function createBlockDropGame() {
+  let shell;
+  let ctx;
+  let board = [];
+  let active = null;
+  let running = false;
+  let animationId = null;
+  let dropTick = 0;
+  let lines = 0;
+  let level = 1;
+  let nextQueue = [];
+  const cols = 10;
+  const rows = 20;
+  const cell = 32;
+  const offsetX = 18;
+  const offsetY = 18;
+  const palette = {
+    I: "#46b1ff",
+    O: "#ffd166",
+    T: "#8f66ff",
+    S: "#1eb980",
+    Z: "#ff6b6b",
+    J: "#7ab6ff",
+    L: "#ff9b54",
+  };
+  const shapes = {
+    I: [[1, 1, 1, 1]],
+    O: [
+      [1, 1],
+      [1, 1],
+    ],
+    T: [
+      [0, 1, 0],
+      [1, 1, 1],
+    ],
+    S: [
+      [0, 1, 1],
+      [1, 1, 0],
+    ],
+    Z: [
+      [1, 1, 0],
+      [0, 1, 1],
+    ],
+    J: [
+      [1, 0, 0],
+      [1, 1, 1],
+    ],
+    L: [
+      [0, 0, 1],
+      [1, 1, 1],
+    ],
+  };
+
+  function emptyBoard() {
+    return Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
+  }
+
+  function getDropFrames() {
+    const mode = getDifficultyMode();
+    const base = mode === "easy" ? 40 : mode === "hard" ? 22 : 30;
+    return Math.max(8, base - (level - 1) * 2);
+  }
+
+  function rotateMatrix(matrix) {
+    return matrix[0].map((_, colIndex) => matrix.map((row) => row[colIndex]).reverse());
+  }
+
+  function makePiece(type) {
+    return {
+      type,
+      matrix: shapes[type].map((row) => [...row]),
+      row: 0,
+      col: Math.floor(cols / 2) - 2,
+    };
+  }
+
+  function randomType() {
+    const types = Object.keys(shapes);
+    return types[Math.floor(Math.random() * types.length)];
+  }
+
+  function ensureQueue() {
+    while (nextQueue.length < 3) {
+      nextQueue.push(randomType());
+    }
+  }
+
+  function collides(piece, nextRow = piece.row, nextCol = piece.col, nextMatrix = piece.matrix) {
+    for (let row = 0; row < nextMatrix.length; row += 1) {
+      for (let col = 0; col < nextMatrix[row].length; col += 1) {
+        if (!nextMatrix[row][col]) continue;
+        const boardRow = nextRow + row;
+        const boardCol = nextCol + col;
+        if (boardCol < 0 || boardCol >= cols || boardRow >= rows) return true;
+        if (boardRow >= 0 && board[boardRow][boardCol]) return true;
+      }
+    }
+    return false;
+  }
+
+  function updateHud() {
+    shell.hud.lines.textContent = `Lines ${lines}`;
+    shell.hud.level.textContent = `Level ${level}`;
+    shell.hud.next.textContent = `Next ${nextQueue[0] || "-"}`;
+    refreshLevel();
+  }
+
+  function spawnPiece() {
+    ensureQueue();
+    active = makePiece(nextQueue.shift());
+    ensureQueue();
+    if (collides(active)) {
+      running = false;
+      setStatus("Stack topped out - auto reset");
+      scheduleAutoReset();
+    }
+    updateHud();
+  }
+
+  function clearLines() {
+    let cleared = 0;
+    for (let row = rows - 1; row >= 0; row -= 1) {
+      if (board[row].every(Boolean)) {
+        board.splice(row, 1);
+        board.unshift(Array.from({ length: cols }, () => ""));
+        cleared += 1;
+        row += 1;
+      }
+    }
+    if (!cleared) return;
+    lines += cleared;
+    level = 1 + Math.floor(lines / 5);
+    setScore(appState.score + [0, 100, 250, 450, 700][cleared] + level * 10);
+    setStatus(`${cleared} line${cleared > 1 ? "s" : ""} cleared`);
+  }
+
+  function lockPiece() {
+    if (!active) return;
+    active.matrix.forEach((row, rowIndex) => {
+      row.forEach((value, colIndex) => {
+        if (!value) return;
+        const boardRow = active.row + rowIndex;
+        const boardCol = active.col + colIndex;
+        if (boardRow >= 0) {
+          board[boardRow][boardCol] = active.type;
+        }
+      });
+    });
+    clearLines();
+    spawnPiece();
+  }
+
+  function movePiece(deltaCol) {
+    if (!running || !active) return;
+    const nextCol = active.col + deltaCol;
+    if (!collides(active, active.row, nextCol)) {
+      active.col = nextCol;
+    }
+  }
+
+  function softDrop() {
+    if (!running || !active) return;
+    const nextRow = active.row + 1;
+    if (collides(active, nextRow, active.col)) {
+      lockPiece();
+      return;
+    }
+    active.row = nextRow;
+    setScore(appState.score + 1);
+  }
+
+  function hardDrop() {
+    if (!running || !active) return;
+    let distance = 0;
+    while (!collides(active, active.row + 1, active.col)) {
+      active.row += 1;
+      distance += 1;
+    }
+    setScore(appState.score + distance * 2);
+    lockPiece();
+  }
+
+  function rotatePiece() {
+    if (!running || !active) return;
+    const rotated = rotateMatrix(active.matrix);
+    const kicks = [0, -1, 1, -2, 2];
+    const validKick = kicks.find((kick) => !collides(active, active.row, active.col + kick, rotated));
+    if (validKick == null) return;
+    active.matrix = rotated;
+    active.col += validKick;
+  }
+
+  function tick() {
+    if (!running) return;
+    dropTick += 1;
+    if (dropTick >= getDropFrames()) {
+      dropTick = 0;
+      softDrop();
+    }
+  }
+
+  function drawCell(x, y, fill, label = "") {
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, cell - 2, cell - 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.strokeRect(x, y, cell - 2, cell - 2);
+    if (label) {
+      ctx.fillStyle = "rgba(8,17,31,0.85)";
+      ctx.font = "700 12px Trebuchet MS";
+      ctx.textAlign = "center";
+      ctx.fillText(label, x + (cell - 2) / 2, y + cell / 2 + 4);
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 520, 720);
+    const bg = ctx.createLinearGradient(0, 0, 0, 720);
+    bg.addColorStop(0, "#08111f");
+    bg.addColorStop(1, "#122a43");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 520, 720);
+
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(offsetX - 4, offsetY - 4, cols * cell + 8, rows * cell + 8);
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const x = offsetX + col * cell;
+        const y = offsetY + row * cell;
+        const value = board[row][col];
+        drawCell(x, y, value ? palette[value] : "rgba(255,255,255,0.035)");
+      }
+    }
+
+    if (active) {
+      active.matrix.forEach((row, rowIndex) => {
+        row.forEach((value, colIndex) => {
+          if (!value) return;
+          const x = offsetX + (active.col + colIndex) * cell;
+          const y = offsetY + (active.row + rowIndex) * cell;
+          drawCell(x, y, palette[active.type]);
+        });
+      });
+    }
+
+    ctx.fillStyle = "rgba(255,255,255,0.84)";
+    ctx.textAlign = "left";
+    ctx.font = "700 18px Trebuchet MS";
+    ctx.fillText("Next", 380, 42);
+    nextQueue.slice(0, 3).forEach((type, index) => {
+      ctx.fillStyle = palette[type];
+      ctx.fillRect(380, 56 + index * 64, 92, 44);
+      ctx.fillStyle = "#08111f";
+      ctx.textAlign = "center";
+      ctx.fillText(type, 426, 84 + index * 64);
+    });
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      ctx.fillRect(0, 0, 520, 720);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 34px Trebuchet MS";
+      ctx.fillText("Block Drop", 260, 320);
+      ctx.font = "20px Trebuchet MS";
+      ctx.fillText("Stack clean, clear lines, don't top out", 260, 354);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    tick();
+    draw();
+  }
+
+  function resetState() {
+    board = emptyBoard();
+    nextQueue = [];
+    lines = 0;
+    level = 1;
+    dropTick = 0;
+    running = false;
+    setScore(0);
+    ensureQueue();
+    spawnPiece();
+    draw();
+    updateHud();
+  }
+
+  return {
+    id: "blockdrop",
+    title: "Block Drop",
+    tagline: "Falling-block stacker",
+    subtitle: "Rotate pieces, clear lines, and survive the stack as the drop speed rises.",
+    description:
+      "A falling-blocks arcade game with rotation, hard drop, line clears, leveling, and faster pressure as you survive longer.",
+    controls: "Arrow keys to move, Up to rotate, Down to soft drop, and Space to hard drop.",
+    getLevelText: () => String(level),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "lines", label: "Lines 0" },
+          { id: "level", label: "Level 1" },
+          { id: "next", label: "Next -" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 520;
+      shell.canvas.height = 720;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Stacking");
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (!running) return;
+      if (["ArrowLeft", "a", "A"].includes(event.key)) movePiece(-1);
+      if (["ArrowRight", "d", "D"].includes(event.key)) movePiece(1);
+      if (["ArrowDown", "s", "S"].includes(event.key)) softDrop();
+      if (["ArrowUp", "w", "W"].includes(event.key)) rotatePiece();
+      if (event.key === " ") hardDrop();
+      draw();
+    },
+  };
+}
+
+function createCannonLaunchGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let angle = -0.9;
+  let power = 10;
+  let shotsLeft = 6;
+  let stageLevel = 1;
+  let targets = [];
+  let projectile = null;
+  const gravity = 0.22;
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { targets: 3, shots: 7, speed: 0.95 };
+    if (mode === "hard") return { targets: 5, shots: 5, speed: 1.18 };
+    return { targets: 4, shots: 6, speed: 1.05 };
+  }
+
+  function updateHud() {
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.shots.textContent = `Shots ${shotsLeft}`;
+    shell.hud.targets.textContent = `Targets ${targets.length}`;
+    refreshLevel();
+  }
+
+  function buildStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    angle = -0.9;
+    power = 10 + Math.min(8, level);
+    shotsLeft = config.shots;
+    projectile = null;
+    targets = Array.from({ length: config.targets + Math.floor((level - 1) / 2) }, (_, index) => ({
+      x: 330 + index * 115 + (index % 2) * 22,
+      y: 430 - (index % 3) * 96,
+      radius: 16 + (index % 2) * 4,
+      drift: ((index % 2 === 0 ? 1 : -1) * (0.45 + level * 0.03) * config.speed),
+    }));
+    if (!preserveScore) setScore(0);
+    updateHud();
+    draw();
+    setStatus(`Stage ${stageLevel}`);
+  }
+
+  function resetState() {
+    running = false;
+    buildStage(1);
+  }
+
+  function fire() {
+    if (!running || projectile || shotsLeft <= 0) return;
+    shotsLeft -= 1;
+    projectile = {
+      x: 74,
+      y: 500,
+      vx: Math.cos(angle) * power,
+      vy: Math.sin(angle) * power,
+      radius: 8,
+    };
+    updateHud();
+    setStatus("Boom");
+  }
+
+  function updateTargets() {
+    targets.forEach((target) => {
+      target.y += target.drift;
+      if (target.y < 70 || target.y > 460) {
+        target.drift *= -1;
+      }
+    });
+  }
+
+  function updateProjectile() {
+    if (!projectile) return;
+    projectile.x += projectile.vx;
+    projectile.y += projectile.vy;
+    projectile.vy += gravity;
+    const hitIndex = targets.findIndex(
+      (target) => Math.hypot(target.x - projectile.x, target.y - projectile.y) <= target.radius + projectile.radius,
+    );
+    if (hitIndex >= 0) {
+      targets.splice(hitIndex, 1);
+      projectile = null;
+      setScore(appState.score + 35 + stageLevel * 8);
+      updateHud();
+      if (!targets.length) {
+        setStatus("Target sweep");
+        window.setTimeout(() => {
+          buildStage(stageLevel + 1, true);
+          if (running) setStatus(`Stage ${stageLevel}`);
+        }, 350);
+      }
+      return;
+    }
+    if (projectile.x > 860 || projectile.y > 560 || projectile.y < -30) {
+      projectile = null;
+      if (shotsLeft <= 0 && targets.length) {
+        running = false;
+        setStatus("Out of shots - auto reset");
+        scheduleAutoReset();
+      } else {
+        setStatus("Retune the aim");
+      }
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 900, 560);
+    const bg = ctx.createLinearGradient(0, 0, 0, 560);
+    bg.addColorStop(0, "#08111f");
+    bg.addColorStop(1, "#153557");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 900, 560);
+
+    ctx.fillStyle = "#1a5f7a";
+    ctx.fillRect(0, 508, 900, 52);
+    ctx.fillStyle = "#d9e7f1";
+    ctx.fillRect(38, 500, 64, 8);
+    ctx.save();
+    ctx.translate(74, 500);
+    ctx.rotate(angle);
+    ctx.fillStyle = "#c7d6e7";
+    ctx.fillRect(-10, -8, 54, 16);
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(74, 500, 20, 0, Math.PI * 2);
+    ctx.fillStyle = "#8f66ff";
+    ctx.fill();
+
+    targets.forEach((target) => {
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#ff8a3d";
+      ctx.fill();
+      ctx.fillStyle = "white";
+      ctx.font = "700 12px Trebuchet MS";
+      ctx.textAlign = "center";
+      ctx.fillText("X", target.x, target.y + 4);
+    });
+
+    if (projectile) {
+      ctx.beginPath();
+      ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffd166";
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "rgba(255,255,255,0.86)";
+    ctx.textAlign = "left";
+    ctx.font = "700 18px Trebuchet MS";
+    ctx.fillText(`Angle ${Math.round((-angle * 180) / Math.PI)}°`, 640, 48);
+    ctx.fillText(`Power ${power.toFixed(1)}`, 640, 78);
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.fillRect(0, 0, 900, 560);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 34px Trebuchet MS";
+      ctx.fillText("Cannon Launch", 450, 250);
+      ctx.font = "20px Trebuchet MS";
+      ctx.fillText("Adjust the aim and blast every target", 450, 286);
+    }
+  }
+
+  function update() {
+    if (!running) return;
+    updateTargets();
+    updateProjectile();
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "cannon",
+    title: "Cannon Launch",
+    tagline: "Arc shot target blast",
+    subtitle: "Tune your angle, adjust your power, and knock out every floating target.",
+    description:
+      "A cannon physics game where you line up arcing shots, manage limited ammo, and clear moving targets to push into later stages.",
+    controls: "Left and right adjust angle, Up and Down change power, and Space fires.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "stage", label: "Stage 1" },
+          { id: "shots", label: "Shots 6" },
+          { id: "targets", label: "Targets 0" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 900;
+      shell.canvas.height = 560;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus(`Stage ${stageLevel}`);
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (!running) return;
+      if (["ArrowLeft", "a", "A"].includes(event.key)) angle = Math.max(-1.45, angle - 0.06);
+      if (["ArrowRight", "d", "D"].includes(event.key)) angle = Math.min(-0.18, angle + 0.06);
+      if (["ArrowUp", "w", "W"].includes(event.key)) power = Math.min(18, power + 0.5);
+      if (["ArrowDown", "s", "S"].includes(event.key)) power = Math.max(6, power - 0.5);
+      if (event.key === " ") fire();
+      draw();
+    },
+  };
+}
+
+function createKnifeFlipGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let stageLevel = 1;
+  let targetAngle = 0;
+  let targetSpeed = 0.035;
+  let knivesLeft = 0;
+  let stuckKnives = [];
+  let activeKnife = null;
+  let apples = [];
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { knives: 8, speed: 0.031, apples: 2 };
+    if (mode === "hard") return { knives: 6, speed: 0.043, apples: 3 };
+    return { knives: 7, speed: 0.037, apples: 2 };
+  }
+
+  function updateHud() {
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.knives.textContent = `Knives ${knivesLeft}`;
+    shell.hud.apples.textContent = `Apples ${apples.length}`;
+    refreshLevel();
+  }
+
+  function buildStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    targetAngle = Math.random() * Math.PI * 2;
+    targetSpeed = (config.speed + Math.min(0.02, level * 0.0016)) * (level % 2 === 0 ? -1 : 1);
+    knivesLeft = Math.max(3, config.knives - Math.floor((level - 1) / 4));
+    stuckKnives = [];
+    activeKnife = null;
+    apples = Array.from({ length: config.apples + (level % 3 === 0 ? 1 : 0) }, (_, index) => ({
+      angle: ((Math.PI * 2) / Math.max(1, config.apples + (level % 3 === 0 ? 1 : 0))) * index + 0.4,
+      taken: false,
+    }));
+    if (!preserveScore) setScore(0);
+    updateHud();
+    draw();
+    setStatus(`Stage ${stageLevel}`);
+  }
+
+  function resetState() {
+    running = false;
+    buildStage(1);
+  }
+
+  function throwKnife() {
+    if (!running || activeKnife || knivesLeft <= 0) return;
+    knivesLeft -= 1;
+    activeKnife = { y: 470, speed: 11.5 };
+    updateHud();
+    setStatus("Flip");
+  }
+
+  function failThrow() {
+    running = false;
+    activeKnife = null;
+    setStatus("Clang - auto reset");
+    scheduleAutoReset();
+    draw();
+  }
+
+  function clearStage() {
+    setScore(appState.score + 80 + stageLevel * 12 + apples.filter((apple) => apple.taken).length * 10);
+    setStatus("Log split");
+    running = false;
+    window.setTimeout(() => {
+      buildStage(stageLevel + 1, true);
+      running = true;
+      frame();
+    }, 420);
+  }
+
+  function update() {
+    if (!running) return;
+    targetAngle += targetSpeed;
+
+    if (activeKnife) {
+      activeKnife.y -= activeKnife.speed;
+      if (activeKnife.y <= 205) {
+        const impactAngle = ((Math.PI / 2 - targetAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        const blocked = stuckKnives.some((knife) => {
+          let diff = Math.abs(knife.angle - impactAngle);
+          diff = Math.min(diff, Math.PI * 2 - diff);
+          return diff < 0.24;
+        });
+        if (blocked) {
+          failThrow();
+          return;
+        }
+        stuckKnives.push({ angle: impactAngle });
+        apples.forEach((apple) => {
+          if (apple.taken) return;
+          let diff = Math.abs(apple.angle - impactAngle);
+          diff = Math.min(diff, Math.PI * 2 - diff);
+          if (diff < 0.22) {
+            apple.taken = true;
+            setScore(appState.score + 15);
+          }
+        });
+        activeKnife = null;
+        if (knivesLeft <= 0) {
+          clearStage();
+          return;
+        }
+        updateHud();
+      }
+    }
+  }
+
+  function drawKnifeAt(x, y, rotation) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    ctx.fillStyle = "#d7e3ef";
+    ctx.fillRect(-4, -32, 8, 42);
+    ctx.fillStyle = "#8f66ff";
+    ctx.fillRect(-10, 8, 20, 10);
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 640, 560);
+    const bg = ctx.createLinearGradient(0, 0, 0, 560);
+    bg.addColorStop(0, "#08111f");
+    bg.addColorStop(1, "#14314f");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 640, 560);
+
+    const centerX = 320;
+    const centerY = 190;
+    const radius = 78;
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#8b5e3c";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius - 20, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    apples.forEach((apple) => {
+      if (apple.taken) return;
+      const x = centerX + Math.cos(targetAngle + apple.angle) * (radius + 18);
+      const y = centerY + Math.sin(targetAngle + apple.angle) * (radius + 18);
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.fillStyle = "#ff6b6b";
+      ctx.fill();
+    });
+
+    stuckKnives.forEach((knife) => {
+      const x = centerX + Math.cos(targetAngle + knife.angle) * (radius - 6);
+      const y = centerY + Math.sin(targetAngle + knife.angle) * (radius - 6);
+      drawKnifeAt(x, y, targetAngle + knife.angle + Math.PI / 2);
+    });
+
+    if (activeKnife) {
+      drawKnifeAt(centerX, activeKnife.y, 0);
+    } else {
+      drawKnifeAt(centerX, 470, 0);
+    }
+
+    for (let index = 0; index < knivesLeft; index += 1) {
+      drawKnifeAt(72, 498 - index * 24, 0);
+    }
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.24)";
+      ctx.fillRect(0, 0, 640, 560);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 32px Trebuchet MS";
+      ctx.fillText("Knife Flip", 320, 306);
+      ctx.font = "19px Trebuchet MS";
+      ctx.fillText("Throw every knife without hitting the others", 320, 338);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "knife",
+    title: "Knife Flip",
+    tagline: "Timing-based log thrower",
+    subtitle: "Time each throw, avoid your own knives, and split the log cleanly.",
+    description:
+      "A timing game inspired by classic knife-throw arcade hits. Toss knives into a spinning log, snag apples, and survive tighter stages.",
+    controls: "Press Space to throw a knife into the spinning target.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "stage", label: "Stage 1" },
+          { id: "knives", label: "Knives 0" },
+          { id: "apples", label: "Apples 0" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 640;
+      shell.canvas.height = 560;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus(`Stage ${stageLevel}`);
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (event.key === " ") {
+        throwKnife();
+      }
+    },
+  };
+}
+
+function createRocketLanderGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let stageLevel = 1;
+  let ship;
+  let terrain = [];
+  let landingPad = { x: 0, y: 0, width: 100 };
+  let keys = { left: false, right: false, thrust: false };
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { fuel: 140, gravity: 0.055, padWidth: 116 };
+    if (mode === "hard") return { fuel: 92, gravity: 0.076, padWidth: 84 };
+    return { fuel: 112, gravity: 0.064, padWidth: 98 };
+  }
+
+  function updateHud() {
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.fuel.textContent = `Fuel ${Math.max(0, Math.floor(ship.fuel))}`;
+    shell.hud.speed.textContent = `Speed ${ship ? Math.abs(ship.vy).toFixed(2) : "0.00"}`;
+    refreshLevel();
+  }
+
+  function generateTerrain(level) {
+    const points = [];
+    let x = 0;
+    let y = 420;
+    while (x <= 900) {
+      points.push({ x, y });
+      x += 90;
+      y = clamp(y + (Math.random() * 120 - 60), 280, 500);
+    }
+    const config = getConfig();
+    const padIndex = 4 + (level % 4);
+    landingPad = {
+      x: points[padIndex].x + 8,
+      y: clamp(points[padIndex].y - 10, 300, 470),
+      width: Math.max(68, config.padWidth - Math.floor((level - 1) / 2) * 4),
+    };
+    points[padIndex].y = landingPad.y + 10;
+    points[padIndex + 1].y = landingPad.y + 10;
+    terrain = points;
+  }
+
+  function buildStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    generateTerrain(level);
+    ship = {
+      x: 120,
+      y: 80,
+      vx: 0,
+      vy: 0,
+      angle: 0,
+      fuel: config.fuel,
+    };
+    if (!preserveScore) setScore(0);
+    updateHud();
+    draw();
+    setStatus(`Stage ${stageLevel}`);
+  }
+
+  function resetState() {
+    running = false;
+    buildStage(1);
+  }
+
+  function getGroundY(x) {
+    for (let index = 0; index < terrain.length - 1; index += 1) {
+      const left = terrain[index];
+      const right = terrain[index + 1];
+      if (x >= left.x && x <= right.x) {
+        const progress = (x - left.x) / Math.max(1, right.x - left.x);
+        return left.y + (right.y - left.y) * progress;
+      }
+    }
+    return 520;
+  }
+
+  function crash(reason) {
+    running = false;
+    setStatus(`${reason} - auto reset`);
+    scheduleAutoReset();
+  }
+
+  function landSuccess() {
+    running = false;
+    setScore(appState.score + 120 + Math.floor(ship.fuel) + stageLevel * 20);
+    setStatus("Smooth landing");
+    window.setTimeout(() => {
+      buildStage(stageLevel + 1, true);
+      running = true;
+      frame();
+    }, 420);
+  }
+
+  function update() {
+    if (!running) return;
+    const config = getConfig();
+    if (keys.left) ship.angle = Math.max(-0.8, ship.angle - 0.03);
+    if (keys.right) ship.angle = Math.min(0.8, ship.angle + 0.03);
+    if (keys.thrust && ship.fuel > 0) {
+      ship.vx += Math.sin(ship.angle) * 0.07;
+      ship.vy -= Math.cos(ship.angle) * 0.12;
+      ship.fuel -= 0.6;
+    }
+    ship.vy += config.gravity;
+    ship.x += ship.vx;
+    ship.y += ship.vy;
+    ship.x = clamp(ship.x, 20, 880);
+
+    const groundY = getGroundY(ship.x);
+    if (ship.y + 18 >= groundY) {
+      const onPad = ship.x >= landingPad.x && ship.x <= landingPad.x + landingPad.width;
+      const gentle = Math.abs(ship.vy) < 1.8 && Math.abs(ship.vx) < 1.1;
+      const upright = Math.abs(ship.angle) < 0.18;
+      if (onPad && gentle && upright) {
+        landSuccess();
+      } else {
+        crash("Crash landing");
+      }
+      return;
+    }
+    if (ship.y < -40) {
+      crash("Lost in space");
+      return;
+    }
+    updateHud();
+  }
+
+  function drawShip() {
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(ship.angle);
+    ctx.fillStyle = "#d8e3ef";
+    ctx.beginPath();
+    ctx.moveTo(0, -18);
+    ctx.lineTo(12, 16);
+    ctx.lineTo(-12, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#8f66ff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-10, 16);
+    ctx.lineTo(-16, 24);
+    ctx.moveTo(10, 16);
+    ctx.lineTo(16, 24);
+    ctx.stroke();
+    if (keys.thrust && ship.fuel > 0 && running) {
+      ctx.fillStyle = "#ff8a3d";
+      ctx.beginPath();
+      ctx.moveTo(-6, 18);
+      ctx.lineTo(0, 34 + Math.random() * 10);
+      ctx.lineTo(6, 18);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 900, 560);
+    const bg = ctx.createLinearGradient(0, 0, 0, 560);
+    bg.addColorStop(0, "#050d18");
+    bg.addColorStop(1, "#17314d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 900, 560);
+
+    for (let star = 0; star < 70; star += 1) {
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fillRect((star * 53) % 900, (star * 97) % 320, 2, 2);
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(0, 560);
+    terrain.forEach((point) => {
+      ctx.lineTo(point.x, point.y);
+    });
+    ctx.lineTo(900, 560);
+    ctx.closePath();
+    ctx.fillStyle = "#2f455d";
+    ctx.fill();
+
+    ctx.fillStyle = "#7ef0bb";
+    ctx.fillRect(landingPad.x, landingPad.y - 4, landingPad.width, 8);
+
+    drawShip();
+
+    ctx.fillStyle = "rgba(255,255,255,0.86)";
+    ctx.font = "700 18px Trebuchet MS";
+    ctx.textAlign = "left";
+    ctx.fillText(`Angle ${Math.round((ship.angle * 180) / Math.PI)}°`, 680, 44);
+    ctx.fillText(`Vx ${ship.vx.toFixed(2)}  Vy ${ship.vy.toFixed(2)}`, 680, 72);
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.24)";
+      ctx.fillRect(0, 0, 900, 560);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 32px Trebuchet MS";
+      ctx.fillText("Rocket Lander", 450, 260);
+      ctx.font = "19px Trebuchet MS";
+      ctx.fillText("Use thrust and tiny corrections to land upright", 450, 294);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "lander",
+    title: "Rocket Lander",
+    tagline: "Moon-landing balance test",
+    subtitle: "Feather the thrust, keep the rocket upright, and land softly on a tiny pad.",
+    description:
+      "A lunar lander-style skill game with thrust control, limited fuel, rough terrain, and stricter landing pads as the stages climb.",
+    controls: "Left and right rotate, Up or Space thrusts, and soft vertical speed matters.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "stage", label: "Stage 1" },
+          { id: "fuel", label: "Fuel 0" },
+          { id: "speed", label: "Speed 0.00" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 900;
+      shell.canvas.height = 560;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus(`Stage ${stageLevel}`);
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      keys = { left: false, right: false, thrust: false };
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+      if (["ArrowUp", "w", "W", " "].includes(event.key)) keys.thrust = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+      if (["ArrowUp", "w", "W", " "].includes(event.key)) keys.thrust = false;
+    },
+  };
+}
+
+function createHoopShotGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let stageLevel = 1;
+  let shotsLeft = 0;
+  let streak = 0;
+  let ball = null;
+  let hoop = { x: 650, y: 220, vx: 1.4, width: 86 };
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { shots: 8, hoopSpeed: 1.2, hoopWidth: 98 };
+    if (mode === "hard") return { shots: 6, hoopSpeed: 1.9, hoopWidth: 76 };
+    return { shots: 7, hoopSpeed: 1.5, hoopWidth: 88 };
+  }
+
+  function updateHud() {
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.shots.textContent = `Shots ${shotsLeft}`;
+    shell.hud.streak.textContent = `Streak ${streak}`;
+    refreshLevel();
+  }
+
+  function buildStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    shotsLeft = config.shots;
+    streak = 0;
+    ball = null;
+    hoop = {
+      x: 620,
+      y: 240 - Math.min(80, (level - 1) * 10),
+      vx: (config.hoopSpeed + level * 0.08) * (level % 2 === 0 ? -1 : 1),
+      width: Math.max(62, config.hoopWidth - Math.floor((level - 1) / 3) * 4),
+    };
+    if (!preserveScore) setScore(0);
+    updateHud();
+    draw();
+    setStatus(`Stage ${stageLevel}`);
+  }
+
+  function resetState() {
+    running = false;
+    buildStage(1);
+  }
+
+  function shoot() {
+    if (!running || ball || shotsLeft <= 0) return;
+    shotsLeft -= 1;
+    ball = {
+      x: 120,
+      y: 430,
+      vx: 8.4,
+      vy: -10.8,
+      radius: 14,
+      scored: false,
+    };
+    updateHud();
+    setStatus("Shot up");
+  }
+
+  function scoreBasket() {
+    if (!ball || ball.scored) return;
+    ball.scored = true;
+    streak += 1;
+    setScore(appState.score + 40 + streak * 10 + stageLevel * 6);
+    updateHud();
+    setStatus(streak > 1 ? `Nothing but net x${streak}` : "Bucket");
+    if (streak >= 3 || (shotsLeft === 0 && !ball)) {
+      running = false;
+      window.setTimeout(() => {
+        buildStage(stageLevel + 1, true);
+        running = true;
+        frame();
+      }, 420);
+    }
+  }
+
+  function missShot() {
+    ball = null;
+    streak = 0;
+    updateHud();
+    if (shotsLeft <= 0) {
+      running = false;
+      setStatus("Out of shots - auto reset");
+      scheduleAutoReset();
+    } else {
+      setStatus("Missed - line up again");
+    }
+  }
+
+  function update() {
+    if (!running) return;
+    hoop.x += hoop.vx;
+    if (hoop.x < 470 || hoop.x + hoop.width > 820) {
+      hoop.vx *= -1;
+    }
+
+    if (!ball) return;
+    const previousY = ball.y;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball.vy += 0.36;
+
+    const rimY = hoop.y + 20;
+    const leftRim = hoop.x;
+    const rightRim = hoop.x + hoop.width;
+    const crossesHoopPlane = previousY <= rimY && ball.y >= rimY;
+    const insideHoop = ball.x > leftRim + 8 && ball.x < rightRim - 8;
+    if (crossesHoopPlane && insideHoop) {
+      scoreBasket();
+    }
+
+    const hitLeftRim = Math.hypot(ball.x - leftRim, ball.y - rimY) < ball.radius + 6;
+    const hitRightRim = Math.hypot(ball.x - rightRim, ball.y - rimY) < ball.radius + 6;
+    if (hitLeftRim || hitRightRim) {
+      ball.vx *= -0.78;
+      ball.vy *= -0.42;
+    }
+
+    if (ball.y > 560 || ball.x > 940) {
+      missShot();
+    }
+  }
+
+  function drawCourt() {
+    ctx.fillStyle = "#d88945";
+    ctx.fillRect(0, 0, 900, 560);
+    ctx.strokeStyle = "rgba(255,255,255,0.26)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(24, 24, 852, 512);
+    ctx.beginPath();
+    ctx.arc(180, 430, 90, -0.8, 0.8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(180, 430, 42, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 900, 560);
+    drawCourt();
+
+    ctx.fillStyle = "#d7ecff";
+    ctx.fillRect(hoop.x + hoop.width - 8, hoop.y - 68, 12, 74);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(hoop.x + hoop.width - 28, hoop.y - 70, 46, 34);
+    ctx.strokeStyle = "#ff6b6b";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(hoop.x, hoop.y);
+    ctx.lineTo(hoop.x + hoop.width, hoop.y);
+    ctx.stroke();
+    ctx.strokeStyle = "#f7f7f7";
+    ctx.lineWidth = 2;
+    for (let index = 1; index < 5; index += 1) {
+      ctx.beginPath();
+      ctx.moveTo(hoop.x + index * (hoop.width / 5), hoop.y);
+      ctx.lineTo(hoop.x + index * (hoop.width / 5) - 8, hoop.y + 24);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#8f66ff";
+    ctx.beginPath();
+    ctx.arc(120, 430, 22, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (ball) {
+      ctx.fillStyle = "#ff8a3d";
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(120,52,18,0.45)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius - 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.18)";
+      ctx.fillRect(0, 0, 900, 560);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 32px Trebuchet MS";
+      ctx.fillText("Hoop Shot", 450, 250);
+      ctx.font = "19px Trebuchet MS";
+      ctx.fillText("Time your arc and sink the moving hoop", 450, 284);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "hoop",
+    title: "Hoop Shot",
+    tagline: "Moving basket score run",
+    subtitle: "Fire clean arcs, beat the moving hoop, and build a scoring streak.",
+    description:
+      "A basketball-style arcade shooter where you launch a ball on a fixed arc, read the moving hoop, and chain makes to clear stages.",
+    controls: "Press Space to shoot. Time the moving hoop and aim for a clean swish.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "stage", label: "Stage 1" },
+          { id: "shots", label: "Shots 0" },
+          { id: "streak", label: "Streak 0" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 900;
+      shell.canvas.height = 560;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus(`Stage ${stageLevel}`);
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (event.key === " ") {
+        shoot();
+      }
+    },
+  };
+}
+
+function createTreasureCupsGame() {
+  let wrapper;
+  let stageLevel = 1;
+  let order = [];
+  let targetCupId = 0;
+  let canPick = false;
+  let revealMode = true;
+  let shuffleTimer = null;
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { cups: 3, shuffles: 4, delay: 440 };
+    if (mode === "hard") return { cups: 4, shuffles: 7, delay: 300 };
+    return { cups: 3, shuffles: 5, delay: 360 };
+  }
+
+  function clearShuffleTimer() {
+    if (shuffleTimer) {
+      clearTimeout(shuffleTimer);
+      shuffleTimer = null;
+    }
+  }
+
+  function updateHud() {
+    wrapper.querySelector('[data-hud="stage"]').textContent = `Stage ${stageLevel}`;
+    wrapper.querySelector('[data-hud="cups"]').textContent = `Cups ${order.length}`;
+    wrapper.querySelector('[data-hud="mode"]').textContent = revealMode ? "Mode Reveal" : canPick ? "Mode Pick" : "Mode Shuffle";
+    refreshLevel();
+  }
+
+  function renderBoard(selectedIndex = -1) {
+    const board = wrapper.querySelector(".cups-row");
+    board.innerHTML = order
+      .map((cupId, index) => {
+        const showGem = revealMode && cupId === targetCupId;
+        const chosen = selectedIndex === index;
+        return `
+          <button class="cup-button ${showGem ? "cup-reveal" : ""} ${chosen ? "cup-choice" : ""}" data-index="${index}">
+            <span class="cup-shell">U</span>
+            <span class="cup-gem">${showGem ? "♦" : "?"}</span>
+          </button>
+        `;
+      })
+      .join("");
+    board.querySelectorAll("[data-index]").forEach((button) => {
+      button.addEventListener("click", () => pickCup(Number(button.dataset.index)));
+    });
+    updateHud();
+  }
+
+  function startShuffle() {
+    const config = getConfig();
+    let remaining = config.shuffles + stageLevel;
+    revealMode = false;
+    canPick = false;
+    renderBoard();
+    setStatus("Watch the shuffle");
+
+    const doShuffle = () => {
+      if (remaining <= 0) {
+        shuffleTimer = null;
+        canPick = true;
+        renderBoard();
+        setStatus("Pick the treasure cup");
+        return;
+      }
+      const left = Math.floor(Math.random() * order.length);
+      let right = Math.floor(Math.random() * order.length);
+      while (right === left) right = Math.floor(Math.random() * order.length);
+      [order[left], order[right]] = [order[right], order[left]];
+      renderBoard();
+      remaining -= 1;
+      shuffleTimer = window.setTimeout(doShuffle, Math.max(120, config.delay - stageLevel * 10));
+    };
+
+    shuffleTimer = window.setTimeout(doShuffle, 650);
+  }
+
+  function buildStage(level, preserveScore = false) {
+    clearShuffleTimer();
+    const config = getConfig();
+    stageLevel = level;
+    order = Array.from({ length: config.cups }, (_, index) => index);
+    targetCupId = order[Math.floor(Math.random() * order.length)];
+    revealMode = true;
+    canPick = false;
+    if (!preserveScore) setScore(0);
+    renderBoard();
+    setStatus("Memorize the treasure cup");
+    shuffleTimer = window.setTimeout(() => {
+      startShuffle();
+    }, 1000);
+  }
+
+  function resetState() {
+    buildStage(1);
+  }
+
+  function pickCup(index) {
+    if (!canPick) return;
+    canPick = false;
+    revealMode = true;
+    renderBoard(index);
+    const chosenCupId = order[index];
+    if (chosenCupId === targetCupId) {
+      setScore(appState.score + 45 + stageLevel * 10);
+      setStatus("Correct pick");
+      shuffleTimer = window.setTimeout(() => {
+        buildStage(stageLevel + 1, true);
+      }, 520);
+      return;
+    }
+    setStatus("Wrong cup - auto reset");
+    scheduleAutoReset();
+  }
+
+  return {
+    id: "cups",
+    title: "Treasure Cups",
+    tagline: "Shuffle-and-guess memory game",
+    subtitle: "Track the hidden treasure through faster shuffles and pick the right cup.",
+    description:
+      "A shell-game style memory challenge where you watch the treasure cup, survive the shuffle, and guess correctly to keep climbing stages.",
+    controls: "Watch the reveal, follow the shuffle, then click the cup hiding the treasure.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="cups-card">
+          <div class="info-chip-row">
+            <span class="info-chip" data-hud="stage">Stage 1</span>
+            <span class="info-chip" data-hud="cups">Cups 3</span>
+            <span class="info-chip" data-hud="mode">Mode Reveal</span>
+          </div>
+          <div class="cups-row"></div>
+          <p class="compact-copy">The treasure starts under one cup, then the cups shuffle faster each stage. Click the correct one after the shuffle stops.</p>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      resetState();
+    },
+    start() {
+      setStatus("Track the treasure");
+    },
+    reset() {
+      clearShuffleTimer();
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      clearShuffleTimer();
+    },
+  };
+}
+
+function createPlinkoDropGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let stageLevel = 1;
+  let dropsLeft = 0;
+  let chip = null;
+  let pegs = [];
+  let slots = [];
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { drops: 7, drift: 1.4 };
+    if (mode === "hard") return { drops: 5, drift: 2.1 };
+    return { drops: 6, drift: 1.75 };
+  }
+
+  function buildBoard() {
+    pegs = [];
+    for (let row = 0; row < 7; row += 1) {
+      for (let col = 0; col < 7; col += 1) {
+        pegs.push({
+          x: 170 + col * 86 + (row % 2) * 42,
+          y: 110 + row * 54,
+        });
+      }
+    }
+    slots = [
+      { x: 120, width: 88, score: 30 },
+      { x: 208, width: 88, score: 60 },
+      { x: 296, width: 88, score: 110 },
+      { x: 384, width: 88, score: 180 },
+      { x: 472, width: 88, score: 110 },
+      { x: 560, width: 88, score: 60 },
+      { x: 648, width: 88, score: 30 },
+    ];
+  }
+
+  function updateHud() {
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.drops.textContent = `Drops ${dropsLeft}`;
+    shell.hud.bestslot.textContent = `Best ${Math.max(...slots.map((slot) => slot.score))}`;
+    refreshLevel();
+  }
+
+  function buildStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    dropsLeft = config.drops;
+    chip = null;
+    buildBoard();
+    if (!preserveScore) setScore(0);
+    updateHud();
+    draw();
+    setStatus(`Stage ${stageLevel}`);
+  }
+
+  function resetState() {
+    running = false;
+    buildStage(1);
+  }
+
+  function dropChip() {
+    if (!running || chip || dropsLeft <= 0) return;
+    dropsLeft -= 1;
+    chip = {
+      x: 410,
+      y: 34,
+      vx: (Math.random() * 2 - 1) * 0.8,
+      vy: 1.4,
+      radius: 12,
+    };
+    updateHud();
+    setStatus("Chip dropped");
+  }
+
+  function resolveSlot() {
+    if (!chip) return;
+    const slot = slots.find((entry) => chip.x >= entry.x && chip.x < entry.x + entry.width) || slots[0];
+    setScore(appState.score + slot.score + stageLevel * 8);
+    chip = null;
+    if (dropsLeft <= 0) {
+      running = false;
+      setStatus("Round scored");
+      window.setTimeout(() => {
+        buildStage(stageLevel + 1, true);
+        running = true;
+        frame();
+      }, 420);
+    } else {
+      setStatus(`Scored ${slot.score}`);
+    }
+  }
+
+  function update() {
+    if (!running || !chip) return;
+    const config = getConfig();
+    chip.vy += 0.18;
+    chip.x += chip.vx;
+    chip.y += chip.vy;
+    chip.x = clamp(chip.x, 56, 764);
+
+    pegs.forEach((peg) => {
+      const dx = chip.x - peg.x;
+      const dy = chip.y - peg.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > 0 && distance < chip.radius + 7) {
+        chip.vx = clamp(chip.vx + (dx / distance) * config.drift, -4.8, 4.8);
+        chip.vy *= 0.84;
+        chip.y = peg.y + (dy >= 0 ? 18 : -18);
+      }
+    });
+
+    chip.vx *= 0.994;
+    if (chip.y >= 500) {
+      resolveSlot();
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 820, 560);
+    const bg = ctx.createLinearGradient(0, 0, 0, 560);
+    bg.addColorStop(0, "#08111f");
+    bg.addColorStop(1, "#13314d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 820, 560);
+
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(70, 60, 680, 450);
+
+    pegs.forEach((peg) => {
+      ctx.beginPath();
+      ctx.arc(peg.x, peg.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#dbe5f2";
+      ctx.fill();
+    });
+
+    slots.forEach((slot) => {
+      ctx.fillStyle = slot.score >= 180 ? "#8f66ff" : slot.score >= 110 ? "#46b1ff" : "#ff8a3d";
+      ctx.fillRect(slot.x, 500, slot.width - 4, 42);
+      ctx.fillStyle = "#08111f";
+      ctx.font = "700 15px Trebuchet MS";
+      ctx.textAlign = "center";
+      ctx.fillText(String(slot.score), slot.x + slot.width / 2 - 2, 526);
+    });
+
+    if (chip) {
+      ctx.beginPath();
+      ctx.arc(chip.x, chip.y, chip.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffd166";
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "rgba(255,255,255,0.86)";
+    ctx.textAlign = "center";
+    ctx.font = "700 18px Trebuchet MS";
+    ctx.fillText("Press Space to drop a chip", 410, 34);
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(0, 0, 820, 560);
+      ctx.fillStyle = "white";
+      ctx.font = "700 32px Trebuchet MS";
+      ctx.fillText("Plinko Drop", 410, 250);
+      ctx.font = "19px Trebuchet MS";
+      ctx.fillText("Drop chips through the peg field and chase the best slot", 410, 284);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "plinko",
+    title: "Plinko Drop",
+    tagline: "Peg-board score chaser",
+    subtitle: "Drop chips through the peg field and land in the highest scoring slot.",
+    description:
+      "A Plinko-style arcade game with bouncing pegs, score buckets, limited drops, and stage progression as each round gets a little meaner.",
+    controls: "Press Space to drop a chip from the top center.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "stage", label: "Stage 1" },
+          { id: "drops", label: "Drops 0" },
+          { id: "bestslot", label: "Best 180" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 820;
+      shell.canvas.height = 560;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus(`Stage ${stageLevel}`);
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (event.key === " ") {
+        dropChip();
+      }
+    },
+  };
+}
+
+function createOrbDodgeGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let player;
+  let hazards = [];
+  let spawnTick = 0;
+  let survivedFrames = 0;
+  let stageLevel = 1;
+  const keys = { left: false, right: false, up: false, down: false };
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { speed: 3.1, spawnRate: 46, hazardSpeed: 2.2 };
+    if (mode === "hard") return { speed: 3.8, spawnRate: 28, hazardSpeed: 3.1 };
+    return { speed: 3.4, spawnRate: 36, hazardSpeed: 2.6 };
+  }
+
+  function updateHud() {
+    shell.hud.time.textContent = `Time ${Math.floor(survivedFrames / 60)}s`;
+    shell.hud.orbs.textContent = `Orbs ${hazards.length}`;
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    refreshLevel();
+  }
+
+  function resetState() {
+    player = { x: 390, y: 250, radius: 14 };
+    hazards = [];
+    spawnTick = 0;
+    survivedFrames = 0;
+    stageLevel = 1;
+    running = false;
+    setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function spawnHazard() {
+    const config = getConfig();
+    const side = Math.floor(Math.random() * 4);
+    const spawn = {
+      x: side === 0 ? -24 : side === 1 ? 804 : Math.random() * 780,
+      y: side === 2 ? -24 : side === 3 ? 524 : Math.random() * 500,
+      radius: 12 + Math.random() * 8,
+      vx: 0,
+      vy: 0,
+      hue: 190 + Math.random() * 140,
+    };
+    const dx = player.x - spawn.x;
+    const dy = player.y - spawn.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const speed = config.hazardSpeed + Math.min(1.8, stageLevel * 0.08);
+    spawn.vx = (dx / distance) * speed;
+    spawn.vy = (dy / distance) * speed;
+    hazards.push(spawn);
+  }
+
+  function update() {
+    if (!running) return;
+    const config = getConfig();
+    survivedFrames += 1;
+    stageLevel = 1 + Math.floor(survivedFrames / 420);
+
+    if (keys.left) player.x -= config.speed;
+    if (keys.right) player.x += config.speed;
+    if (keys.up) player.y -= config.speed;
+    if (keys.down) player.y += config.speed;
+    player.x = clamp(player.x, 24, 776);
+    player.y = clamp(player.y, 24, 496);
+
+    spawnTick += 1;
+    const spawnRate = Math.max(10, config.spawnRate - Math.floor(stageLevel / 2));
+    if (spawnTick >= spawnRate) {
+      spawnTick = 0;
+      spawnHazard();
+    }
+
+    hazards.forEach((hazard) => {
+      hazard.x += hazard.vx;
+      hazard.y += hazard.vy;
+    });
+    hazards = hazards.filter((hazard) => hazard.x > -60 && hazard.x < 840 && hazard.y > -60 && hazard.y < 580);
+
+    const hit = hazards.some((hazard) => Math.hypot(hazard.x - player.x, hazard.y - player.y) < hazard.radius + player.radius);
+    if (hit) {
+      running = false;
+      setStatus("Tagged by an orb - auto reset");
+      scheduleAutoReset();
+      return;
+    }
+
+    setScore(Math.floor(survivedFrames / 6));
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 800, 520);
+    const bg = ctx.createRadialGradient(player.x, player.y, 30, 400, 260, 420);
+    bg.addColorStop(0, "rgba(70, 177, 255, 0.16)");
+    bg.addColorStop(1, "#08111f");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 800, 520);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(18, 18, 764, 484);
+
+    hazards.forEach((hazard) => {
+      ctx.beginPath();
+      ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${hazard.hue} 82% 60%)`;
+      ctx.fill();
+    });
+
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffd166";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius + 10, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255, 209, 102, 0.24)";
+    ctx.stroke();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.24)";
+      ctx.fillRect(0, 0, 800, 520);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 32px Trebuchet MS";
+      ctx.fillText("Orb Dodge", 400, 242);
+      ctx.font = "19px Trebuchet MS";
+      ctx.fillText("Stay alive, weave the arena, and outlast the swarm", 400, 276);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "orb",
+    title: "Orb Dodge",
+    tagline: "Arena survival swarm",
+    subtitle: "Weave through the arena, avoid the incoming swarm, and survive long enough to level up.",
+    description:
+      "A clean survival game where glowing hazards stream in from the edges and you stay alive by movement alone as the arena gets busier.",
+    controls: "Use arrow keys or WASD to move and dodge every orb.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "time", label: "Time 0s" },
+          { id: "orbs", label: "Orbs 0" },
+          { id: "stage", label: "Stage 1" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 800;
+      shell.canvas.height = 520;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Stay moving");
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      keys.left = false;
+      keys.right = false;
+      keys.up = false;
+      keys.down = false;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = true;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = false;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = false;
+    },
+  };
+}
+
+function createTunnelGlideGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let shipX = 260;
+  let walls = [];
+  let distance = 0;
+  let stageLevel = 1;
+  const keys = { left: false, right: false };
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { speed: 4.4, gap: 156, shift: 22 };
+    if (mode === "hard") return { speed: 6, gap: 122, shift: 34 };
+    return { speed: 5.1, gap: 138, shift: 28 };
+  }
+
+  function updateHud() {
+    shell.hud.distance.textContent = `Distance ${Math.floor(distance)}`;
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.speed.textContent = `Speed ${getCurrentSpeed().toFixed(1)}`;
+    refreshLevel();
+  }
+
+  function getCurrentSpeed() {
+    return getConfig().speed + stageLevel * 0.12;
+  }
+
+  function resetState() {
+    shipX = 260;
+    walls = [];
+    distance = 0;
+    stageLevel = 1;
+    running = false;
+    setScore(0);
+    for (let y = -120; y < 620; y += 70) {
+      walls.push({ y, gapX: 190 + Math.random() * 160, gapWidth: getConfig().gap });
+    }
+    updateHud();
+    draw();
+  }
+
+  function spawnWall() {
+    const config = getConfig();
+    const previous = walls[walls.length - 1];
+    const nextX = clamp((previous?.gapX ?? 250) + (Math.random() * config.shift * 2 - config.shift), 90, 430);
+    walls.push({
+      y: -70,
+      gapX: nextX,
+      gapWidth: Math.max(92, config.gap - Math.floor(stageLevel / 2) * 3),
+    });
+  }
+
+  function update() {
+    if (!running) return;
+    const moveSpeed = 5.1;
+    if (keys.left) shipX -= moveSpeed;
+    if (keys.right) shipX += moveSpeed;
+    shipX = clamp(shipX, 50, 550);
+
+    const speed = getCurrentSpeed();
+    distance += speed * 0.1;
+    setScore(Math.floor(distance));
+    stageLevel = 1 + Math.floor(distance / 140);
+
+    walls.forEach((wall) => {
+      wall.y += speed;
+    });
+    if (walls.length && walls[0].y > 620) {
+      walls.shift();
+      spawnWall();
+    }
+
+    const shipY = 460;
+    const hit = walls.some((wall) => {
+      if (shipY < wall.y || shipY > wall.y + 26) return false;
+      return shipX < wall.gapX || shipX > wall.gapX + wall.gapWidth;
+    });
+
+    if (hit) {
+      running = false;
+      setStatus("Scraped the tunnel - auto reset");
+      scheduleAutoReset();
+      return;
+    }
+
+    updateHud();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 600, 560);
+    const bg = ctx.createLinearGradient(0, 0, 0, 560);
+    bg.addColorStop(0, "#08111f");
+    bg.addColorStop(1, "#102945");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 600, 560);
+
+    walls.forEach((wall) => {
+      ctx.fillStyle = "#2d4a68";
+      ctx.fillRect(0, wall.y, wall.gapX, 26);
+      ctx.fillRect(wall.gapX + wall.gapWidth, wall.y, 600 - (wall.gapX + wall.gapWidth), 26);
+    });
+
+    ctx.fillStyle = "#7ef0bb";
+    ctx.beginPath();
+    ctx.moveTo(shipX, 430);
+    ctx.lineTo(shipX + 16, 490);
+    ctx.lineTo(shipX - 16, 490);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#46b1ff";
+    ctx.fillRect(shipX - 6, 490, 12, 18);
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      ctx.fillRect(0, 0, 600, 560);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 32px Trebuchet MS";
+      ctx.fillText("Tunnel Glide", 300, 252);
+      ctx.font = "19px Trebuchet MS";
+      ctx.fillText("Steer through the moving tunnel and survive the speed ramp", 300, 286);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "tunnel",
+    title: "Tunnel Glide",
+    tagline: "Narrow corridor reflex run",
+    subtitle: "Steer through the shifting tunnel and survive as the corridor speeds up.",
+    description:
+      "A fast tunnel-runner where horizontal movement is everything. Stay inside the gaps, react to corridor shifts, and last longer as speed rises.",
+    controls: "Use left and right arrows or A and D to stay inside the moving tunnel gap.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "distance", label: "Distance 0" },
+          { id: "stage", label: "Stage 1" },
+          { id: "speed", label: "Speed 0.0" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 600;
+      shell.canvas.height = 560;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Keep centered");
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      keys.left = false;
+      keys.right = false;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+    },
+  };
+}
+
+function createMarbleTiltGame() {
+  let shell;
+  let ctx;
+  let running = false;
+  let animationId = null;
+  let stageLevel = 1;
+  let board = [];
+  let marble = { x: 0, y: 0, vx: 0, vy: 0 };
+  const keys = { left: false, right: false, up: false, down: false };
+  const tile = 56;
+  const levels = [
+    [
+      "########",
+      "#S.....#",
+      "#..#...#",
+      "#..#..G#",
+      "#......#",
+      "########",
+    ],
+    [
+      "########",
+      "#S..#..#",
+      "#.#.#O.#",
+      "#.#...G#",
+      "#...#..#",
+      "########",
+    ],
+    [
+      "#########",
+      "#S.....G#",
+      "#.###.#.#",
+      "#...O.#.#",
+      "#.#...#.#",
+      "#.......#",
+      "#########",
+    ],
+    [
+      "#########",
+      "#S....#G#",
+      "#.##..#.#",
+      "#..O..#.#",
+      "#.#..##.#",
+      "#.......#",
+      "#########",
+    ],
+    [
+      "##########",
+      "#S...#...#",
+      "#.#O.#.#G#",
+      "#.#..#.#.#",
+      "#....O...#",
+      "#.######.#",
+      "#........#",
+      "##########",
+    ],
+  ];
+
+  function getCurrentLayout() {
+    return levels[(stageLevel - 1) % levels.length];
+  }
+
+  function getConfig() {
+    const mode = getDifficultyMode();
+    if (mode === "easy") return { accel: 0.22, friction: 0.93, maxSpeed: 4.3 };
+    if (mode === "hard") return { accel: 0.31, friction: 0.95, maxSpeed: 5.5 };
+    return { accel: 0.26, friction: 0.94, maxSpeed: 4.8 };
+  }
+
+  function loadStage(level, preserveScore = false) {
+    stageLevel = level;
+    board = getCurrentLayout().map((row) => row.split(""));
+    if (shell?.canvas) {
+      shell.canvas.width = board[0].length * tile;
+      shell.canvas.height = board.length * tile;
+    }
+    board.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        if (cell === "S") {
+          marble = {
+            x: colIndex * tile + tile / 2,
+            y: rowIndex * tile + tile / 2,
+            vx: 0,
+            vy: 0,
+          };
+          board[rowIndex][colIndex] = ".";
+        }
+      });
+    });
+    if (!preserveScore) setScore(0);
+    updateHud();
+    draw();
+    setStatus(`Stage ${stageLevel}`);
+  }
+
+  function updateHud() {
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.speed.textContent = `Speed ${Math.hypot(marble.vx, marble.vy).toFixed(2)}`;
+    shell.hud.goal.textContent = "Reach goal";
+    refreshLevel();
+  }
+
+  function getCell(col, row) {
+    return board[row]?.[col] ?? "#";
+  }
+
+  function resetState() {
+    running = false;
+    loadStage(1);
+  }
+
+  function collideAxis(nextX, nextY, axis) {
+    const radius = 12;
+    const checks = [
+      [nextX - radius, nextY - radius],
+      [nextX + radius, nextY - radius],
+      [nextX - radius, nextY + radius],
+      [nextX + radius, nextY + radius],
+    ];
+    const hitWall = checks.some(([x, y]) => getCell(Math.floor(x / tile), Math.floor(y / tile)) === "#");
+    if (!hitWall) return { x: nextX, y: nextY, blocked: false };
+    if (axis === "x") return { x: marble.x, y: nextY, blocked: true };
+    return { x: nextX, y: marble.y, blocked: true };
+  }
+
+  function update() {
+    if (!running) return;
+    const config = getConfig();
+    const ax = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    const ay = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    marble.vx = clamp((marble.vx + ax * config.accel) * config.friction, -config.maxSpeed, config.maxSpeed);
+    marble.vy = clamp((marble.vy + ay * config.accel) * config.friction, -config.maxSpeed, config.maxSpeed);
+
+    let moved = collideAxis(marble.x + marble.vx, marble.y, "x");
+    marble.x = moved.x;
+    if (moved.blocked) marble.vx *= -0.28;
+
+    moved = collideAxis(marble.x, marble.y + marble.vy, "y");
+    marble.y = moved.y;
+    if (moved.blocked) marble.vy *= -0.28;
+
+    const col = Math.floor(marble.x / tile);
+    const row = Math.floor(marble.y / tile);
+    const cell = getCell(col, row);
+
+    if (cell === "O") {
+      running = false;
+      setStatus("Dropped into a hole - auto reset");
+      scheduleAutoReset();
+      return;
+    }
+
+    if (cell === "G") {
+      running = false;
+      setScore(appState.score + 100 + stageLevel * 20);
+      setStatus("Goal reached");
+      window.setTimeout(() => {
+        loadStage(stageLevel + 1, true);
+        running = true;
+        frame();
+      }, 400);
+      return;
+    }
+
+    setScore(appState.score + 1);
+    updateHud();
+  }
+
+  function draw() {
+    const rows = board.length;
+    const cols = board[0].length;
+    const width = cols * tile;
+    const height = rows * tile;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#0b1829";
+    ctx.fillRect(0, 0, width, height);
+
+    board.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        const x = colIndex * tile;
+        const y = rowIndex * tile;
+        ctx.fillStyle = cell === "#" ? "#2b425f" : "rgba(255,255,255,0.05)";
+        if (cell === "G") ctx.fillStyle = "#1eb980";
+        if (cell === "O") ctx.fillStyle = "#0a0f16";
+        ctx.fillRect(x + 2, y + 2, tile - 4, tile - 4);
+        if (cell === "O") {
+          ctx.beginPath();
+          ctx.arc(x + tile / 2, y + tile / 2, 14, 0, Math.PI * 2);
+          ctx.fillStyle = "#000000";
+          ctx.fill();
+        }
+      });
+    });
+
+    ctx.beginPath();
+    ctx.arc(marble.x, marble.y, 12, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffd166";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(marble.x - 3, marble.y - 3, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fill();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 28px Trebuchet MS";
+      ctx.fillText("Marble Tilt", width / 2, height / 2 - 8);
+      ctx.font = "18px Trebuchet MS";
+      ctx.fillText("Tilt carefully into the goal", width / 2, height / 2 + 22);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      draw();
+      return;
+    }
+    animationId = requestAnimationFrame(frame);
+    update();
+    draw();
+  }
+
+  return {
+    id: "marble",
+    title: "Marble Tilt",
+    tagline: "Tilt-maze precision run",
+    subtitle: "Guide the marble through walls and holes, then settle into the goal.",
+    description:
+      "A tilt-maze style precision game where momentum matters. Guide the marble around walls, avoid holes, and reach the goal to unlock the next stage.",
+    controls: "Use arrow keys or WASD to tilt the marble through the maze.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "stage", label: "Stage 1" },
+          { id: "speed", label: "Speed 0.00" },
+          { id: "goal", label: "Reach goal" },
+        ],
+      });
+      stage.appendChild(shell.wrap);
+      const layout = getCurrentLayout();
+      shell.canvas.width = layout[0].length * tile;
+      shell.canvas.height = layout.length * tile;
+      ctx = shell.canvas.getContext("2d");
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Tilt carefully");
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      keys.left = false;
+      keys.right = false;
+      keys.up = false;
+      keys.down = false;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = true;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = true;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = true;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = true;
+    },
+    onKeyUp(event) {
+      if (["ArrowLeft", "a", "A"].includes(event.key)) keys.left = false;
+      if (["ArrowRight", "d", "D"].includes(event.key)) keys.right = false;
+      if (["ArrowUp", "w", "W"].includes(event.key)) keys.up = false;
+      if (["ArrowDown", "s", "S"].includes(event.key)) keys.down = false;
+    },
+  };
+}
+
 function createPongGame() {
   let shell;
   let ctx;
@@ -1293,7 +3738,8 @@ function createMergeGame() {
   let wrapper;
   let board = [];
   let running = true;
-  let slideClassTimer = null;
+  let animationTimer = null;
+  let isAnimating = false;
 
   function emptyBoard() {
     return Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => 0));
@@ -1316,48 +3762,74 @@ function createMergeGame() {
     addRandomTile();
     addRandomTile();
     running = true;
+    isAnimating = false;
     setScore(0);
     renderBoard();
   }
 
-  function renderBoard() {
+  function renderBoard(boardToRender = board) {
     const grid = wrapper.querySelector(".merge-grid");
-    grid.innerHTML = board
-      .flat()
-      .map(
-        (value) => `<div class="merge-tile merge-${value}">${value === 0 ? "" : value}</div>`,
+    const slots = Array.from({ length: 16 }, () => `<div class="merge-slot"></div>`).join("");
+    const tiles = boardToRender
+      .flatMap((row, rowIndex) =>
+        row.flatMap((value, colIndex) =>
+          value
+            ? `<div class="merge-tile merge-${value}" style="--row:${rowIndex};--col:${colIndex}">${value}</div>`
+            : [],
+        ),
       )
       .join("");
+    grid.innerHTML = `${slots}<div class="merge-layer">${tiles}</div>`;
     refreshLevel();
   }
 
-  function animateSlide(direction) {
+  function animateMove(tiles, onDone) {
     const grid = wrapper?.querySelector(".merge-grid");
     if (!grid) return;
-    if (slideClassTimer) clearTimeout(slideClassTimer);
-    grid.classList.remove("slide-left", "slide-right", "slide-up", "slide-down");
-    grid.classList.add(`slide-${direction}`);
-    slideClassTimer = window.setTimeout(() => {
-      grid.classList.remove("slide-left", "slide-right", "slide-up", "slide-down");
-      slideClassTimer = null;
-    }, 140);
+    const slots = Array.from({ length: 16 }, () => `<div class="merge-slot"></div>`).join("");
+    const movingTiles = tiles
+      .map(
+        (tile) =>
+          `<div class="merge-tile merge-${tile.value} merge-moving" style="--row:${tile.fromRow};--col:${tile.fromCol};--to-row:${tile.toRow};--to-col:${tile.toCol}">${tile.value}</div>`,
+      )
+      .join("");
+    grid.innerHTML = `${slots}<div class="merge-layer">${movingTiles}</div>`;
+    const elements = [...grid.querySelectorAll(".merge-moving")];
+    requestAnimationFrame(() => {
+      elements.forEach((element) => {
+        element.style.setProperty("--row", element.style.getPropertyValue("--to-row"));
+        element.style.setProperty("--col", element.style.getPropertyValue("--to-col"));
+      });
+    });
+    if (animationTimer) clearTimeout(animationTimer);
+    animationTimer = window.setTimeout(() => {
+      animationTimer = null;
+      onDone();
+    }, 170);
   }
 
   function slideRowLeft(row) {
-    const compact = row.filter((value) => value !== 0);
+    const compact = row
+      .map((value, index) => ({ value, index }))
+      .filter((entry) => entry.value !== 0);
     const next = [];
+    const motions = [];
     let gained = 0;
     for (let index = 0; index < compact.length; index += 1) {
-      if (compact[index] === compact[index + 1]) {
-        next.push(compact[index] * 2);
-        gained += compact[index] * 2;
+      const current = compact[index];
+      const targetIndex = next.length;
+      motions.push({ value: current.value, from: current.index, to: targetIndex });
+      if (compact[index + 1] && current.value === compact[index + 1].value) {
+        motions.push({ value: compact[index + 1].value, from: compact[index + 1].index, to: targetIndex });
+        next.push(current.value * 2);
+        gained += current.value * 2;
         index += 1;
       } else {
-        next.push(compact[index]);
+        next.push(current.value);
       }
     }
     while (next.length < 4) next.push(0);
-    return { row: next, gained };
+    return { row: next, gained, motions };
   }
 
   function reverseRows(matrix) {
@@ -1368,8 +3840,15 @@ function createMergeGame() {
     return matrix[0].map((_, columnIndex) => matrix.map((row) => row[columnIndex]));
   }
 
+  function mapMotion(direction, from, to, lineIndex) {
+    if (direction === "left") return { fromRow: lineIndex, fromCol: from, toRow: lineIndex, toCol: to };
+    if (direction === "right") return { fromRow: lineIndex, fromCol: 3 - from, toRow: lineIndex, toCol: 3 - to };
+    if (direction === "up") return { fromRow: from, fromCol: lineIndex, toRow: to, toCol: lineIndex };
+    return { fromRow: 3 - from, fromCol: lineIndex, toRow: 3 - to, toCol: lineIndex };
+  }
+
   function performMove(direction) {
-    if (!running) return;
+    if (!running || isAnimating) return;
     let working = board.map((row) => [...row]);
 
     if (direction === "right") {
@@ -1382,11 +3861,13 @@ function createMergeGame() {
 
     let moved = false;
     let gained = 0;
-    working = working.map((row) => {
+    let motions = [];
+    working = working.map((row, lineIndex) => {
       const result = slideRowLeft(row);
       const next = result.row;
       if (next.some((value, index) => value !== row[index])) moved = true;
       gained += result.gained;
+      motions = motions.concat(result.motions.map((motion) => mapMotion(direction, motion.from, motion.to, lineIndex)));
       return next;
     });
 
@@ -1399,18 +3880,21 @@ function createMergeGame() {
     }
 
     if (!moved) return;
-    board = working;
-    addRandomTile();
-    setScore(appState.score + gained);
-    renderBoard();
-    animateSlide(direction);
-    if (isGameOver()) {
-      running = false;
-      setStatus(`Game over - ${appState.score}`);
-      scheduleAutoReset();
-    } else {
-      setStatus("Sliding");
-    }
+    isAnimating = true;
+    animateMove(motions, () => {
+      board = working;
+      addRandomTile();
+      setScore(appState.score + gained);
+      renderBoard();
+      isAnimating = false;
+      if (isGameOver()) {
+        running = false;
+        setStatus(`Game over - ${appState.score}`);
+        scheduleAutoReset();
+      } else {
+        setStatus("Sliding");
+      }
+    });
   }
 
   function isGameOver() {
@@ -1460,6 +3944,8 @@ function createMergeGame() {
       setStatus("Sliding");
     },
     reset() {
+      if (animationTimer) clearTimeout(animationTimer);
+      animationTimer = null;
       resetState();
       setStatus("Ready");
     },
@@ -1474,8 +3960,9 @@ function createMergeGame() {
       if (direction) performMove(direction);
     },
     destroy() {
-      if (slideClassTimer) clearTimeout(slideClassTimer);
-      slideClassTimer = null;
+      if (animationTimer) clearTimeout(animationTimer);
+      animationTimer = null;
+      isAnimating = false;
     },
   };
 }

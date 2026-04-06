@@ -2,7 +2,7 @@ const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260406v";
+const BUILD_VERSION = "20260406aa";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -166,6 +166,7 @@ const appState = {
   best: 0,
   levelText: "1",
   difficulty: persistedSettings.difficulty,
+  collapsedCategories: persistedSettings.collapsedCategories,
   countdownTimerId: null,
   countdownTargetGameId: null,
   countdownRemaining: 0,
@@ -287,6 +288,7 @@ function bindEvents() {
 
 function renderGameList() {
   const categorizedMarkup = GAME_CATEGORIES.map((group) => {
+    const isCollapsed = Boolean(appState.collapsedCategories[group.label]);
     const buttons = group.ids
       .map((id) => games[id])
       .filter(Boolean)
@@ -301,9 +303,14 @@ function renderGameList() {
       .join("");
 
     return `
-      <section class="game-category">
-        <p class="game-category-label">${escapeHtml(group.label)}</p>
-        ${buttons}
+      <section class="game-category ${isCollapsed ? "collapsed" : ""}">
+        <button class="game-category-toggle" type="button" data-category-toggle="${escapeHtml(group.label)}" aria-expanded="${String(!isCollapsed)}">
+          <span class="game-category-label">${escapeHtml(group.label)}</span>
+          <span class="game-category-icon">${isCollapsed ? "+" : "-"}</span>
+        </button>
+        <div class="game-category-body">
+          ${buttons}
+        </div>
       </section>
     `;
   }).join("");
@@ -328,6 +335,9 @@ function renderGameList() {
 
   els.gameList.querySelectorAll("[data-game-id]").forEach((button) => {
     button.addEventListener("click", () => selectGame(button.dataset.gameId));
+  });
+  els.gameList.querySelectorAll("[data-category-toggle]").forEach((button) => {
+    button.addEventListener("click", () => toggleCategory(button.dataset.categoryToggle));
   });
 }
 
@@ -490,6 +500,15 @@ function changeDifficulty(value) {
   setStatus(`${getDifficultyPreset().label} mode ready`);
 }
 
+function toggleCategory(label) {
+  appState.collapsedCategories = {
+    ...appState.collapsedCategories,
+    [label]: !appState.collapsedCategories[label],
+  };
+  persistSettings();
+  renderGameList();
+}
+
 function getDifficultyPreset() {
   return DIFFICULTY_PRESETS[appState.difficulty] || DIFFICULTY_PRESETS.normal;
 }
@@ -503,9 +522,15 @@ function getDifficultyMode() {
 function loadSettings() {
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-    return { difficulty: normalizeDifficulty(parsed.difficulty) };
+    return {
+      difficulty: normalizeDifficulty(parsed.difficulty),
+      collapsedCategories:
+        parsed.collapsedCategories && typeof parsed.collapsedCategories === "object"
+          ? parsed.collapsedCategories
+          : {},
+    };
   } catch (error) {
-    return { difficulty: "normal" };
+    return { difficulty: "normal", collapsedCategories: {} };
   }
 }
 
@@ -514,6 +539,7 @@ function persistSettings() {
     SETTINGS_KEY,
     JSON.stringify({
       difficulty: appState.difficulty,
+      collapsedCategories: appState.collapsedCategories,
     }),
   );
 }
@@ -1034,8 +1060,9 @@ function createBlockDropGame() {
   }
 
   function getDropFrames() {
-    const mode = getDifficultyMode();
-    const base = mode === "easy" ? 40 : mode === "hard" ? 22 : 30;
+    const mode = appState.difficulty;
+    const base =
+      mode === "chill" ? 46 : mode === "easy" ? 40 : mode === "hard" ? 22 : mode === "chaos" ? 18 : 30;
     return Math.max(8, base - (level - 1) * 2);
   }
 
@@ -1338,9 +1365,11 @@ function createCannonLaunchGame() {
   const gravity = 0.22;
 
   function getConfig() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return { targets: 3, shots: 8, speed: 0.88 };
     if (mode === "easy") return { targets: 3, shots: 7, speed: 0.95 };
     if (mode === "hard") return { targets: 5, shots: 5, speed: 1.18 };
+    if (mode === "chaos") return { targets: 6, shots: 4, speed: 1.28 };
     return { targets: 4, shots: 6, speed: 1.05 };
   }
 
@@ -1576,9 +1605,11 @@ function createKnifeFlipGame() {
   let apples = [];
 
   function getConfig() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return { knives: 9, speed: 0.028, apples: 2 };
     if (mode === "easy") return { knives: 8, speed: 0.031, apples: 2 };
     if (mode === "hard") return { knives: 6, speed: 0.043, apples: 3 };
+    if (mode === "chaos") return { knives: 5, speed: 0.049, apples: 4 };
     return { knives: 7, speed: 0.037, apples: 2 };
   }
 
@@ -2186,9 +2217,11 @@ function createHoopShotGame() {
   const keys = { left: false, right: false, up: false, down: false };
 
   function getConfig() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return { shots: 9, hoopSpeed: 1.05, hoopWidth: 108 };
     if (mode === "easy") return { shots: 8, hoopSpeed: 1.2, hoopWidth: 98 };
     if (mode === "hard") return { shots: 6, hoopSpeed: 1.9, hoopWidth: 76 };
+    if (mode === "chaos") return { shots: 5, hoopSpeed: 2.15, hoopWidth: 70 };
     return { shots: 7, hoopSpeed: 1.5, hoopWidth: 88 };
   }
 
@@ -2488,9 +2521,11 @@ function createTreasureCupsGame() {
   let shuffleTimer = null;
 
   function getConfig() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return { cups: 3, shuffles: 3, delay: 520 };
     if (mode === "easy") return { cups: 3, shuffles: 4, delay: 440 };
     if (mode === "hard") return { cups: 4, shuffles: 7, delay: 300 };
+    if (mode === "chaos") return { cups: 5, shuffles: 9, delay: 250 };
     return { cups: 3, shuffles: 5, delay: 360 };
   }
 
@@ -2644,12 +2679,18 @@ function createPlinkoDropGame() {
   let pegs = [];
   let slots = [];
   let bumpers = [];
+  let dropX = 410;
+  let nudgesLeft = 0;
+  let hotSlotIndex = 3;
+  let nudgeCooldown = 0;
 
   function getConfig() {
-    const mode = getDifficultyMode();
-    if (mode === "easy") return { drops: 7, drift: 1.4, bumperBoost: 7.8 };
-    if (mode === "hard") return { drops: 5, drift: 2.1, bumperBoost: 9.2 };
-    return { drops: 6, drift: 1.75, bumperBoost: 8.5 };
+    const mode = appState.difficulty;
+    if (mode === "chill") return { drops: 8, drift: 1.15, bumperBoost: 7.2, nudges: 4, nudgeForce: 1.35, hotMultiplier: 1.7 };
+    if (mode === "easy") return { drops: 7, drift: 1.4, bumperBoost: 7.8, nudges: 4, nudgeForce: 1.5, hotMultiplier: 1.8 };
+    if (mode === "hard") return { drops: 5, drift: 2.1, bumperBoost: 9.2, nudges: 3, nudgeForce: 1.8, hotMultiplier: 2.0 };
+    if (mode === "chaos") return { drops: 4, drift: 2.4, bumperBoost: 9.8, nudges: 2, nudgeForce: 2.05, hotMultiplier: 2.2 };
+    return { drops: 6, drift: 1.75, bumperBoost: 8.5, nudges: 3, nudgeForce: 1.65, hotMultiplier: 1.9 };
   }
 
   function buildBoard() {
@@ -2659,18 +2700,18 @@ function createPlinkoDropGame() {
         pegs.push({
           x: 170 + col * 86 + (row % 2) * 42,
           y: 110 + row * 54,
+          bonus: Math.random() < 0.12,
         });
       }
     }
-    slots = [
-      { x: 120, width: 88, score: 30 },
-      { x: 208, width: 88, score: 60 },
-      { x: 296, width: 88, score: 110 },
-      { x: 384, width: 88, score: 180 },
-      { x: 472, width: 88, score: 110 },
-      { x: 560, width: 88, score: 60 },
-      { x: 648, width: 88, score: 30 },
-    ];
+    hotSlotIndex = (stageLevel + (appState.difficulty === "chaos" ? 2 : 0)) % 7;
+    const baseScores = [30, 60, 110, 180, 110, 60, 30];
+    slots = baseScores.map((score, index) => ({
+      x: 120 + index * 88,
+      width: 88,
+      score,
+      multiplier: index === hotSlotIndex ? getConfig().hotMultiplier : 1,
+    }));
     bumpers = [
       { id: "up", x: 268, y: 452, width: 118, height: 16, tilt: -0.48, activeFrames: 0, label: "UP" },
       { id: "down", x: 438, y: 452, width: 118, height: 16, tilt: 0.48, activeFrames: 0, label: "DOWN" },
@@ -2680,7 +2721,7 @@ function createPlinkoDropGame() {
   function updateHud() {
     shell.hud.stage.textContent = `Stage ${stageLevel}`;
     shell.hud.drops.textContent = `Drops ${dropsLeft}`;
-    shell.hud.bestslot.textContent = `Best ${Math.max(...slots.map((slot) => slot.score))}`;
+    shell.hud.bestslot.textContent = chip ? `Nudges ${nudgesLeft}` : `Hot x${slots[hotSlotIndex]?.multiplier?.toFixed(1) || "1.0"}`;
     refreshLevel();
   }
 
@@ -2689,6 +2730,9 @@ function createPlinkoDropGame() {
     stageLevel = level;
     dropsLeft = config.drops;
     chip = null;
+    nudgesLeft = config.nudges;
+    nudgeCooldown = 0;
+    dropX = 410;
     buildBoard();
     if (!preserveScore) setScore(0);
     updateHud();
@@ -2705,12 +2749,15 @@ function createPlinkoDropGame() {
     if (!running || chip || dropsLeft <= 0) return;
     dropsLeft -= 1;
     chip = {
-      x: 410,
+      x: dropX,
       y: 34,
       vx: (Math.random() * 2 - 1) * 0.8,
       vy: 1.4,
       radius: 12,
+      bonusScore: 0,
+      hitBonusPegIds: new Set(),
     };
+    nudgesLeft = getConfig().nudges;
     updateHud();
     setStatus("Chip dropped");
   }
@@ -2718,7 +2765,9 @@ function createPlinkoDropGame() {
   function resolveSlot() {
     if (!chip) return;
     const slot = slots.find((entry) => chip.x >= entry.x && chip.x < entry.x + entry.width) || slots[0];
-    setScore(appState.score + slot.score + stageLevel * 8);
+    const slotScore = Math.round(slot.score * slot.multiplier);
+    const totalScore = slotScore + stageLevel * 8 + chip.bonusScore;
+    setScore(appState.score + totalScore);
     chip = null;
     if (dropsLeft <= 0) {
       running = false;
@@ -2729,19 +2778,21 @@ function createPlinkoDropGame() {
         frame();
       }, 420);
     } else {
-      setStatus(`Scored ${slot.score}`);
+      setStatus(`Scored ${totalScore}`);
     }
+    updateHud();
   }
 
   function update() {
     if (!running || !chip) return;
     const config = getConfig();
+    nudgeCooldown = Math.max(0, nudgeCooldown - 1);
     chip.vy += 0.18;
     chip.x += chip.vx;
     chip.y += chip.vy;
     chip.x = clamp(chip.x, 56, 764);
 
-    pegs.forEach((peg) => {
+    pegs.forEach((peg, pegIndex) => {
       const dx = chip.x - peg.x;
       const dy = chip.y - peg.y;
       const distance = Math.hypot(dx, dy);
@@ -2749,6 +2800,11 @@ function createPlinkoDropGame() {
         chip.vx = clamp(chip.vx + (dx / distance) * config.drift, -4.8, 4.8);
         chip.vy *= 0.84;
         chip.y = peg.y + (dy >= 0 ? 18 : -18);
+        if (peg.bonus && !chip.hitBonusPegIds.has(pegIndex)) {
+          chip.hitBonusPegIds.add(pegIndex);
+          chip.bonusScore += 12 + stageLevel * 2;
+          setStatus("Bonus peg");
+        }
       }
     });
 
@@ -2772,6 +2828,22 @@ function createPlinkoDropGame() {
     }
   }
 
+  function nudgeChip(direction) {
+    if (!running) return;
+    if (!chip) {
+      dropX = clamp(dropX + direction * 38, 120, 700);
+      draw();
+      return;
+    }
+    if (nudgesLeft <= 0 || nudgeCooldown > 0) return;
+    chip.vx = clamp(chip.vx + direction * getConfig().nudgeForce, -7.2, 7.2);
+    chip.vy = Math.max(chip.vy - 0.2, -3.8);
+    nudgesLeft -= 1;
+    nudgeCooldown = 8;
+    updateHud();
+    setStatus(direction < 0 ? "Nudged left" : "Nudged right");
+  }
+
   function draw() {
     ctx.clearRect(0, 0, 820, 560);
     const bg = ctx.createLinearGradient(0, 0, 0, 560);
@@ -2786,17 +2858,20 @@ function createPlinkoDropGame() {
     pegs.forEach((peg) => {
       ctx.beginPath();
       ctx.arc(peg.x, peg.y, 7, 0, Math.PI * 2);
-      ctx.fillStyle = "#dbe5f2";
+      ctx.fillStyle = peg.bonus ? "#facc15" : "#dbe5f2";
       ctx.fill();
     });
 
     slots.forEach((slot) => {
-      ctx.fillStyle = slot.score >= 180 ? "#8f66ff" : slot.score >= 110 ? "#46b1ff" : "#ff8a3d";
+      const isHot = slot.multiplier > 1;
+      ctx.fillStyle = isHot ? "#7ef0bb" : slot.score >= 180 ? "#8f66ff" : slot.score >= 110 ? "#46b1ff" : "#ff8a3d";
       ctx.fillRect(slot.x, 500, slot.width - 4, 42);
       ctx.fillStyle = "#08111f";
       ctx.font = "700 15px Trebuchet MS";
       ctx.textAlign = "center";
-      ctx.fillText(String(slot.score), slot.x + slot.width / 2 - 2, 526);
+      ctx.fillText(isHot ? `x${slot.multiplier.toFixed(1)}` : String(slot.score), slot.x + slot.width / 2 - 2, 520);
+      ctx.font = "700 12px Trebuchet MS";
+      ctx.fillText(String(slot.score), slot.x + slot.width / 2 - 2, 536);
     });
 
     bumpers.forEach((bumper) => {
@@ -2817,12 +2892,27 @@ function createPlinkoDropGame() {
       ctx.arc(chip.x, chip.y, chip.radius, 0, Math.PI * 2);
       ctx.fillStyle = "#ffd166";
       ctx.fill();
+      if (chip.bonusScore > 0) {
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.font = "700 14px Trebuchet MS";
+        ctx.textAlign = "left";
+        ctx.fillText(`+${chip.bonusScore}`, 22, 62);
+      }
+    } else {
+      ctx.strokeStyle = "rgba(255,255,255,0.65)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(dropX, 34);
+      ctx.lineTo(dropX - 10, 20);
+      ctx.moveTo(dropX, 34);
+      ctx.lineTo(dropX + 10, 20);
+      ctx.stroke();
     }
 
     ctx.fillStyle = "rgba(255,255,255,0.86)";
     ctx.textAlign = "center";
     ctx.font = "700 18px Trebuchet MS";
-    ctx.fillText("Space drops a chip. Up and Down fire the bumpers.", 410, 34);
+    ctx.fillText("Left and Right aim or nudge. Space drops. Up and Down fire the bumpers.", 410, 34);
 
     if (!running) {
       ctx.fillStyle = "rgba(0,0,0,0.2)";
@@ -2851,8 +2941,8 @@ function createPlinkoDropGame() {
     tagline: "Peg-board score chaser",
     subtitle: "Drop chips through the peg field and land in the highest scoring slot.",
     description:
-      "A Plinko-style arcade game with bouncing pegs, score buckets, limited drops, and controllable bumpers so you can change a falling chip's path.",
-    controls: "Press Space to drop a chip. Use Up and Down to smack the chip back upward with the bumpers.",
+      "A Plinko-style arcade game with aimable drops, bonus pegs, hot slots, limited mid-air nudges, and controllable bumpers so each chip has more strategy.",
+    controls: "Left and Right aim the drop or nudge a falling chip. Space drops. Up and Down fire the bumpers.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
       stage.innerHTML = "";
@@ -2893,6 +2983,14 @@ function createPlinkoDropGame() {
         dropChip();
         return;
       }
+      if (["ArrowLeft", "a", "A"].includes(event.key)) {
+        nudgeChip(-1);
+        return;
+      }
+      if (["ArrowRight", "d", "D"].includes(event.key)) {
+        nudgeChip(1);
+        return;
+      }
       if (["ArrowUp", "w", "W"].includes(event.key)) {
         const bumper = bumpers.find((entry) => entry.id === "up");
         if (bumper) bumper.activeFrames = 10;
@@ -2919,9 +3017,11 @@ function createOrbDodgeGame() {
   const keys = { left: false, right: false, up: false, down: false };
 
   function getConfig() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return { speed: 2.9, spawnRate: 54, hazardSpeed: 2.0 };
     if (mode === "easy") return { speed: 3.1, spawnRate: 46, hazardSpeed: 2.2 };
     if (mode === "hard") return { speed: 3.8, spawnRate: 28, hazardSpeed: 3.1 };
+    if (mode === "chaos") return { speed: 4.1, spawnRate: 24, hazardSpeed: 3.45 };
     return { speed: 3.4, spawnRate: 36, hazardSpeed: 2.6 };
   }
 
@@ -3126,10 +3226,12 @@ function createTunnelGlideGame() {
   const keys = { left: false, right: false };
 
   function getConfig() {
-    const mode = getDifficultyMode();
-    if (mode === "easy") return { speed: 4.4, gap: 156, shift: 22 };
-    if (mode === "hard") return { speed: 6, gap: 122, shift: 34 };
-    return { speed: 5.1, gap: 138, shift: 28 };
+    const mode = appState.difficulty;
+    if (mode === "chill") return { speed: 4.0, moveSpeed: 4.3, gap: 176, shift: 18 };
+    if (mode === "easy") return { speed: 4.4, moveSpeed: 4.8, gap: 156, shift: 22 };
+    if (mode === "hard") return { speed: 6.0, moveSpeed: 5.8, gap: 122, shift: 34 };
+    if (mode === "chaos") return { speed: 6.5, moveSpeed: 6.2, gap: 110, shift: 40 };
+    return { speed: 5.1, moveSpeed: 5.2, gap: 138, shift: 28 };
   }
 
   function updateHud() {
@@ -3150,8 +3252,12 @@ function createTunnelGlideGame() {
     stageLevel = 1;
     running = false;
     setScore(0);
+    let seedGapX = clamp(shipX - getConfig().gap / 2, 90, 430);
     for (let y = -120; y < 620; y += 70) {
-      walls.push({ y, gapX: 190 + Math.random() * 160, gapWidth: getConfig().gap });
+      if (y < 380) {
+        seedGapX = clamp(seedGapX + (Math.random() * getConfig().shift * 2 - getConfig().shift), 90, 430);
+      }
+      walls.push({ y, gapX: seedGapX, gapWidth: getConfig().gap });
     }
     updateHud();
     draw();
@@ -3170,7 +3276,7 @@ function createTunnelGlideGame() {
 
   function update() {
     if (!running) return;
-    const moveSpeed = 5.1;
+    const moveSpeed = getConfig().moveSpeed;
     if (keys.left) shipX -= moveSpeed;
     if (keys.right) shipX += moveSpeed;
     shipX = clamp(shipX, 50, 550);
@@ -5674,9 +5780,16 @@ function createReactionGame() {
   const maxStages = 6;
 
   function getStageTarget() {
-    const preset = getDifficultyPreset();
     const base =
-      getDifficultyMode() === "easy" ? 430 : getDifficultyMode() === "hard" ? 320 : 370;
+      appState.difficulty === "chill"
+        ? 470
+        : appState.difficulty === "easy"
+          ? 430
+          : appState.difficulty === "hard"
+            ? 320
+            : appState.difficulty === "chaos"
+              ? 285
+              : 370;
     return Math.max(150, base - (stageLevel - 1) * 28);
   }
 
@@ -5989,8 +6102,23 @@ function createSpaceBlasterGame() {
   };
 
   function getConfig() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") {
+    if (appState.difficulty === "chill") {
+      return {
+        shields: 4,
+        shipSpeed: 6.6,
+        meteorSpeed: 2.0,
+        spawnRate: 72,
+        minSpawnRate: 44,
+        spawnRateRamp: 2,
+        maxMeteors: 6,
+        maxMeteorsCap: 9,
+        baseWaveSize: 7,
+        waveGrowth: 2,
+        speedRamp: 0.12,
+        waveCreditReward: 3,
+      };
+    }
+    if (appState.difficulty === "easy") {
       return {
         shields: 4,
         shipSpeed: 6.3,
@@ -6006,7 +6134,7 @@ function createSpaceBlasterGame() {
         waveCreditReward: 3,
       };
     }
-    if (getDifficultyMode() === "hard") {
+    if (appState.difficulty === "hard") {
       return {
         shields: 3,
         shipSpeed: 5.45,
@@ -6019,6 +6147,22 @@ function createSpaceBlasterGame() {
         baseWaveSize: 10,
         waveGrowth: 3,
         speedRamp: 0.2,
+        waveCreditReward: 4,
+      };
+    }
+    if (appState.difficulty === "chaos") {
+      return {
+        shields: 2,
+        shipSpeed: 5.15,
+        meteorSpeed: 3.25,
+        spawnRate: 46,
+        minSpawnRate: 24,
+        spawnRateRamp: 4,
+        maxMeteors: 8,
+        maxMeteorsCap: 12,
+        baseWaveSize: 11,
+        waveGrowth: 3,
+        speedRamp: 0.24,
         waveCreditReward: 4,
       };
     }
@@ -6699,9 +6843,10 @@ function createStackerGame() {
   const blockHeight = 26;
 
   function getConfig() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") return { startWidth: 240, speed: 3.6 };
-    if (getDifficultyMode() === "hard") return { startWidth: 180, speed: 5.4 };
+    if (appState.difficulty === "chill") return { startWidth: 260, speed: 3.2 };
+    if (appState.difficulty === "easy") return { startWidth: 240, speed: 3.6 };
+    if (appState.difficulty === "hard") return { startWidth: 180, speed: 5.4 };
+    if (appState.difficulty === "chaos") return { startWidth: 160, speed: 6.0 };
     return { startWidth: 210, speed: 4.4 };
   }
 
@@ -6876,8 +7021,10 @@ function createNumberVaultGame() {
   let guessesUsed = 0;
 
   function getConfig() {
-    if (getDifficultyMode() === "easy") return { maxNumber: 40, attempts: 12 };
-    if (getDifficultyMode() === "hard") return { maxNumber: 120, attempts: 8 };
+    if (appState.difficulty === "chill") return { maxNumber: 30, attempts: 13 };
+    if (appState.difficulty === "easy") return { maxNumber: 40, attempts: 12 };
+    if (appState.difficulty === "hard") return { maxNumber: 120, attempts: 8 };
+    if (appState.difficulty === "chaos") return { maxNumber: 150, attempts: 7 };
     return { maxNumber: 80, attempts: 10 };
   }
 
@@ -7002,9 +7149,10 @@ function createColorFloodGame() {
   const palette = ["#46b1ff", "#ff8a3d", "#8f66ff", "#1eb980", "#ffd166"];
 
   function getConfig() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") return { size: 8, moves: 18 };
-    if (getDifficultyMode() === "hard") return { size: 10, moves: 13 };
+    if (appState.difficulty === "chill") return { size: 7, moves: 20 };
+    if (appState.difficulty === "easy") return { size: 8, moves: 18 };
+    if (appState.difficulty === "hard") return { size: 10, moves: 13 };
+    if (appState.difficulty === "chaos") return { size: 11, moves: 11 };
     return { size: 9, moves: 15 };
   }
 
@@ -7186,9 +7334,10 @@ function createLightsOutGame() {
   let nextStageTimeout = null;
 
   function getConfig() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") return { size: 4, scrambleBase: 7 };
-    if (getDifficultyMode() === "hard") return { size: 6, scrambleBase: 15 };
+    if (appState.difficulty === "chill") return { size: 4, scrambleBase: 5 };
+    if (appState.difficulty === "easy") return { size: 4, scrambleBase: 7 };
+    if (appState.difficulty === "hard") return { size: 6, scrambleBase: 15 };
+    if (appState.difficulty === "chaos") return { size: 7, scrambleBase: 18 };
     return { size: 5, scrambleBase: 10 };
   }
 
@@ -7564,9 +7713,10 @@ function createCrateQuestGame() {
   };
 
   function getLevels() {
-    const mode = getDifficultyMode();
-    if (mode === "easy") return levelSets.easy;
-    if (mode === "hard") return levelSets.hard;
+    if (appState.difficulty === "chill") return levelSets.easy;
+    if (appState.difficulty === "easy") return [...levelSets.easy, ...levelSets.normal.slice(0, 4)];
+    if (appState.difficulty === "hard") return levelSets.hard;
+    if (appState.difficulty === "chaos") return [...levelSets.hard, ...levelSets.hard.slice(0, 3).reverse()];
     return levelSets.normal;
   }
 
@@ -9113,9 +9263,8 @@ function createMazeEscapeGame() {
   }
 
   function getLayoutKey() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") return "easy";
-    if (getDifficultyMode() === "hard") return "hard";
+    if (appState.difficulty === "chill" || appState.difficulty === "easy") return "easy";
+    if (appState.difficulty === "hard" || appState.difficulty === "chaos") return "hard";
     return "normal";
   }
 
@@ -9217,7 +9366,16 @@ function createMazeEscapeGame() {
 
   function spawnGhosts() {
     const available = ghostStarts.length ? [...ghostStarts] : findGhostSpawns();
-    const baseDesired = getLayoutKey() === "easy" ? 2 : getLayoutKey() === "hard" ? 4 : 3;
+    const baseDesired =
+      appState.difficulty === "chill"
+        ? 2
+        : appState.difficulty === "easy"
+          ? 3
+          : appState.difficulty === "hard"
+            ? 4
+            : appState.difficulty === "chaos"
+              ? 4
+              : 3;
     const desired = Math.min(available.length, Math.min(4, baseDesired + Math.floor((stageLevel - 1) / 3)));
     ghostStarts = available.slice(0, Math.max(2, desired));
     if (!ghostStarts.length) {
@@ -9235,8 +9393,16 @@ function createMazeEscapeGame() {
   }
 
   function getGhostStepMs() {
-    const preset = getDifficultyPreset();
-    const base = getDifficultyMode() === "easy" ? 470 : getDifficultyMode() === "hard" ? 310 : 380;
+    const base =
+      appState.difficulty === "chill"
+        ? 520
+        : appState.difficulty === "easy"
+          ? 470
+          : appState.difficulty === "hard"
+            ? 310
+            : appState.difficulty === "chaos"
+              ? 270
+              : 380;
     return Math.max(140, base - (stageLevel - 1) * 18);
   }
 
@@ -9578,8 +9744,18 @@ function createDodgeDriftGame() {
   let dodged = 0;
 
   function getConfig() {
-    const preset = getDifficultyPreset();
-    if (getDifficultyMode() === "easy") {
+    if (appState.difficulty === "chill") {
+      return {
+        lives: 5,
+        moveSpeed: 6.5,
+        hazardSpeed: 2.8,
+        spawnRate: 62,
+        minSpawnRate: 30,
+        spawnRamp: 2,
+        doubleSpawnChance: 0.1,
+      };
+    }
+    if (appState.difficulty === "easy") {
       return {
         lives: 4,
         moveSpeed: 6.1,
@@ -9590,7 +9766,7 @@ function createDodgeDriftGame() {
         doubleSpawnChance: 0.16,
       };
     }
-    if (getDifficultyMode() === "hard") {
+    if (appState.difficulty === "hard") {
       return {
         lives: 2,
         moveSpeed: 5.1,
@@ -9599,6 +9775,17 @@ function createDodgeDriftGame() {
         minSpawnRate: 14,
         spawnRamp: 4,
         doubleSpawnChance: 0.38,
+      };
+    }
+    if (appState.difficulty === "chaos") {
+      return {
+        lives: 2,
+        moveSpeed: 4.8,
+        hazardSpeed: 4.6,
+        spawnRate: 31,
+        minSpawnRate: 12,
+        spawnRamp: 4,
+        doubleSpawnChance: 0.46,
       };
     }
     return {
@@ -9839,10 +10026,10 @@ function createBubblePopGame() {
   let timeLeft = 0;
 
   function getStageConfig(level) {
-    const mode = getDifficultyMode();
-    const baseGoal = mode === "easy" ? 6 : mode === "hard" ? 8 : 7;
-    const baseTime = mode === "easy" ? 18 : mode === "hard" ? 14 : 16;
-    const baseSpeed = mode === "easy" ? 1.25 : mode === "hard" ? 2.1 : 1.6;
+    const mode = appState.difficulty;
+    const baseGoal = mode === "chill" ? 5 : mode === "easy" ? 6 : mode === "hard" ? 8 : mode === "chaos" ? 9 : 7;
+    const baseTime = mode === "chill" ? 20 : mode === "easy" ? 18 : mode === "hard" ? 14 : mode === "chaos" ? 12 : 16;
+    const baseSpeed = mode === "chill" ? 1.05 : mode === "easy" ? 1.25 : mode === "hard" ? 2.1 : mode === "chaos" ? 2.45 : 1.6;
     return {
       goal: baseGoal + Math.floor((level - 1) * 1.5),
       time: Math.max(8, baseTime - Math.floor((level - 1) / 3)),
@@ -10078,9 +10265,11 @@ function createWordScrambleGame() {
   }
 
   function getTriesBase() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return 7;
     if (mode === "easy") return 6;
     if (mode === "hard") return 4;
+    if (mode === "chaos") return 3;
     return 5;
   }
 
@@ -10405,9 +10594,11 @@ function createLuckySlotsGame() {
   const symbols = ["STAR", "7", "BAR", "ORB", "GEM", "ROCKET"];
 
   function getSpinSpeed() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return 10;
     if (mode === "easy") return 12;
     if (mode === "hard") return 18;
+    if (mode === "chaos") return 21;
     return 15;
   }
 
@@ -10442,8 +10633,8 @@ function createLuckySlotsGame() {
   }
 
   function resetState() {
-    const mode = getDifficultyMode();
-    credits = mode === "easy" ? 38 : mode === "hard" ? 24 : 30;
+    const mode = appState.difficulty;
+    credits = mode === "chill" ? 44 : mode === "easy" ? 38 : mode === "hard" ? 24 : mode === "chaos" ? 20 : 30;
     bet = Math.min(3, credits);
     lastWin = 0;
     spins = 0;
@@ -10564,9 +10755,11 @@ function createCodeBreakerGame() {
   const colors = ["Red", "Blue", "Green", "Gold", "Pink", "Cyan"];
 
   function getGuessLimit() {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
+    if (mode === "chill") return 11;
     if (mode === "easy") return 10;
     if (mode === "hard") return 7;
+    if (mode === "chaos") return 6;
     return 8;
   }
 
@@ -10820,7 +11013,7 @@ function createTowerTacticsGame() {
   }
 
   function getWaveConfig(level) {
-    const mode = getDifficultyMode();
+    const mode = appState.difficulty;
     const difficultyMap = {
       chill: { count: 8, spawnGap: 37, speed: 1.02, hp: 3, reward: 2 },
       easy: { count: 10, spawnGap: 33, speed: 1.12, hp: 3, reward: 2 },
@@ -11898,11 +12091,11 @@ function createBalanceBeamGame() {
   const keys = { left: false, right: false };
 
   function getConfig() {
-    if (appState.difficulty === "chill") return { push: 0.0024, drift: 0.0007, tolerance: 0.04 };
-    if (appState.difficulty === "easy") return { push: 0.0028, drift: 0.001, tolerance: 0.035 };
-    if (appState.difficulty === "hard") return { push: 0.0034, drift: 0.0018, tolerance: 0.028 };
-    if (appState.difficulty === "chaos") return { push: 0.0038, drift: 0.0022, tolerance: 0.024 };
-    return { push: 0.0031, drift: 0.0014, tolerance: 0.032 };
+    if (appState.difficulty === "chill") return { push: 0.00135, drift: 0.00032, tolerance: 0.04, maxVelocity: 0.018 };
+    if (appState.difficulty === "easy") return { push: 0.0016, drift: 0.00045, tolerance: 0.035, maxVelocity: 0.02 };
+    if (appState.difficulty === "hard") return { push: 0.00215, drift: 0.00082, tolerance: 0.028, maxVelocity: 0.024 };
+    if (appState.difficulty === "chaos") return { push: 0.00245, drift: 0.00105, tolerance: 0.024, maxVelocity: 0.026 };
+    return { push: 0.00185, drift: 0.0006, tolerance: 0.032, maxVelocity: 0.022 };
   }
 
   function updateHud() {
@@ -11934,10 +12127,11 @@ function createBalanceBeamGame() {
     const config = getConfig();
     elapsed += delta / 1000;
     drift += (Math.random() * 2 - 1) * config.drift * delta;
-    drift = clamp(drift, -0.16, 0.16);
-    velocity += drift * 0.0024;
+    drift = clamp(drift, -0.08, 0.08);
+    velocity += drift * 0.0015;
     velocity += ((keys.right ? 1 : 0) - (keys.left ? 1 : 0)) * config.push * delta;
-    velocity *= 0.986;
+    velocity *= 0.972;
+    velocity = clamp(velocity, -config.maxVelocity, config.maxVelocity);
     position += velocity;
     setScore(Math.floor(elapsed * 12));
     if (position < 0 || position > 1) {

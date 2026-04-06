@@ -123,6 +123,23 @@ select {
   gap: 8px;
 }
 
+.game-category-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+}
+
+.game-category-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .game-category-label {
   margin: 0;
   color: var(--muted);
@@ -130,6 +147,21 @@ select {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.game-category-icon {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.game-category-body {
+  display: grid;
+  gap: 8px;
+}
+
+.game-category.collapsed .game-category-body {
+  display: none;
 }
 
 .build-info {

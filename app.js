@@ -1,8 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
-const START_COUNTDOWN_SECONDS = 3;
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260406aa";
+const BUILD_VERSION = "20260407c";
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -127,9 +126,9 @@ const DIFFICULTY_PRESETS = {
 };
 
 const GAME_CATEGORIES = [
-  { label: "Action", ids: ["runner", "space", "tower", "cannon", "knife", "lander", "orb", "tunnel", "hopper", "dodge", "snout", "maze", "pong", "flappy", "catch", "sweep", "rhythm", "jetpack"] },
-  { label: "Arcade", ids: ["snake", "breakout", "blockdrop", "hoop", "plinko", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots", "target", "balance", "spin", "gates"] },
-  { label: "Puzzle", ids: ["memory", "merge", "vault", "cups", "marble", "flood", "lights", "crates", "mines", "hangman", "scramble", "code", "math", "dig", "recall", "trail", "slide", "pipes"] },
+  { label: "Action", ids: ["space", "tower", "cannon", "knife", "lander", "orb", "tunnel", "hopper", "dodge", "snout", "maze", "pong", "flappy", "catch", "sweep", "rhythm", "jetpack", "storm"] },
+  { label: "Arcade", ids: ["snake", "breakout", "blockdrop", "hoop", "plinko", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots", "target", "balance", "spin", "gates", "glow", "ring", "panic"] },
+  { label: "Puzzle", ids: ["memory", "merge", "vault", "cups", "marble", "flood", "lights", "crates", "mines", "hangman", "scramble", "code", "math", "dig", "recall", "trail", "slide", "pipes", "laser", "steps", "swap"] },
 ];
 
 const els = {
@@ -147,6 +146,7 @@ const els = {
   statusPill: document.querySelector("#statusPill"),
   gameStage: document.querySelector("#gameStage"),
   difficultySelect: document.querySelector("#difficultySelect"),
+  startDelaySelect: document.querySelector("#startDelaySelect"),
   quickDifficultySelect: document.querySelector("#quickDifficultySelect"),
   difficultyHint: document.querySelector("#difficultyHint"),
   shareLink: document.querySelector("#shareLink"),
@@ -166,6 +166,7 @@ const appState = {
   best: 0,
   levelText: "1",
   difficulty: persistedSettings.difficulty,
+  startCountdownSeconds: persistedSettings.startCountdownSeconds,
   collapsedCategories: persistedSettings.collapsedCategories,
   countdownTimerId: null,
   countdownTargetGameId: null,
@@ -176,7 +177,6 @@ const appState = {
 const games = {
   snake: createSnakeGame(),
   flappy: createFlappyGame(),
-  runner: createRunnerGame(),
   breakout: createBreakoutGame(),
   target: createTargetTapGame(),
   catch: createCatchCrazeGame(),
@@ -228,6 +228,13 @@ const games = {
   slots: createLuckySlotsGame(),
   scramble: createWordScrambleGame(),
   code: createCodeBreakerGame(),
+  glow: createGlowGridGame(),
+  ring: createRingStopGame(),
+  laser: createLaserLockGame(),
+  steps: createSafeStepsGame(),
+  storm: createStormRiderGame(),
+  panic: createPatternPanicGame(),
+  swap: createSwapSortGame(),
 };
 
 boot();
@@ -254,6 +261,10 @@ function bindEvents() {
 
   els.difficultySelect?.addEventListener("change", () => {
     changeDifficulty(els.difficultySelect.value);
+  });
+
+  els.startDelaySelect?.addEventListener("change", () => {
+    changeStartDelay(els.startDelaySelect.value);
   });
 
   els.quickDifficultySelect?.addEventListener("change", () => {
@@ -452,8 +463,12 @@ function cancelStartCountdown() {
 
 function beginStartCountdown() {
   if (!appState.activeGame || appState.countdownTimerId) return;
+  if (appState.startCountdownSeconds <= 0) {
+    appState.activeGame.start();
+    return;
+  }
   appState.countdownTargetGameId = appState.selectedGameId;
-  appState.countdownRemaining = START_COUNTDOWN_SECONDS;
+  appState.countdownRemaining = appState.startCountdownSeconds;
   setStatus(`Starting in ${appState.countdownRemaining}`);
   updateStartButtonLabel();
 
@@ -490,6 +505,11 @@ function normalizeDifficulty(value) {
   return DIFFICULTY_PRESETS[value] ? value : "normal";
 }
 
+function normalizeStartDelay(value) {
+  const parsed = Number(value);
+  return [0, 1, 3, 5, 10].includes(parsed) ? parsed : 3;
+}
+
 function changeDifficulty(value) {
   clearAutoReset();
   cancelStartCountdown();
@@ -498,6 +518,18 @@ function changeDifficulty(value) {
   updateSettingsUi();
   appState.activeGame?.reset?.();
   setStatus(`${getDifficultyPreset().label} mode ready`);
+}
+
+function changeStartDelay(value) {
+  cancelStartCountdown();
+  appState.startCountdownSeconds = normalizeStartDelay(value);
+  persistSettings();
+  updateSettingsUi();
+  setStatus(
+    appState.startCountdownSeconds > 0
+      ? `Start timer set to ${appState.startCountdownSeconds} second${appState.startCountdownSeconds === 1 ? "" : "s"}`
+      : "Start timer turned off",
+  );
 }
 
 function toggleCategory(label) {
@@ -524,13 +556,14 @@ function loadSettings() {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     return {
       difficulty: normalizeDifficulty(parsed.difficulty),
+      startCountdownSeconds: normalizeStartDelay(parsed.startCountdownSeconds),
       collapsedCategories:
         parsed.collapsedCategories && typeof parsed.collapsedCategories === "object"
           ? parsed.collapsedCategories
           : {},
     };
   } catch (error) {
-    return { difficulty: "normal", collapsedCategories: {} };
+    return { difficulty: "normal", startCountdownSeconds: 3, collapsedCategories: {} };
   }
 }
 
@@ -539,6 +572,7 @@ function persistSettings() {
     SETTINGS_KEY,
     JSON.stringify({
       difficulty: appState.difficulty,
+      startCountdownSeconds: appState.startCountdownSeconds,
       collapsedCategories: appState.collapsedCategories,
     }),
   );
@@ -548,6 +582,9 @@ function updateSettingsUi() {
   const preset = getDifficultyPreset();
   if (els.difficultySelect) {
     els.difficultySelect.value = appState.difficulty;
+  }
+  if (els.startDelaySelect) {
+    els.startDelaySelect.value = String(appState.startCountdownSeconds);
   }
   if (els.quickDifficultySelect) {
     els.quickDifficultySelect.value = appState.difficulty;
@@ -7714,9 +7751,10 @@ function createCrateQuestGame() {
 
   function getLevels() {
     if (appState.difficulty === "chill") return levelSets.easy;
-    if (appState.difficulty === "easy") return [...levelSets.easy, ...levelSets.normal.slice(0, 4)];
+    if (appState.difficulty === "easy") return [...levelSets.easy.slice(1), ...levelSets.normal.slice(0, 5)];
+    if (appState.difficulty === "normal") return [...levelSets.normal, ...levelSets.hard.slice(0, 2)];
     if (appState.difficulty === "hard") return levelSets.hard;
-    if (appState.difficulty === "chaos") return [...levelSets.hard, ...levelSets.hard.slice(0, 3).reverse()];
+    if (appState.difficulty === "chaos") return [...levelSets.hard, ...levelSets.hard.slice(2).reverse()];
     return levelSets.normal;
   }
 
@@ -7838,6 +7876,7 @@ function createCrateQuestGame() {
   }
 
   function tryMove(deltaRow, deltaCol) {
+    const levels = getLevels();
     const nextRow = player.row + deltaRow;
     const nextCol = player.col + deltaCol;
     if (!canEnter(nextRow, nextCol)) return;
@@ -14293,6 +14332,1196 @@ function createPipeTwistGame() {
       running = true;
       renderBoard();
       setStatus("Connect the pipe");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+    },
+  };
+}
+
+function createGlowGridGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let running = false;
+  let stageLevel = 1;
+  let hits = 0;
+  let misses = 0;
+  let cells = [];
+  let spawnIntervalId = null;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 4, target: 8, maxMisses: 5, spawnMs: 900, lifeMs: 1500, simultaneous: 1 };
+    if (appState.difficulty === "easy") return { size: 4, target: 10, maxMisses: 4, spawnMs: 820, lifeMs: 1300, simultaneous: 1 };
+    if (appState.difficulty === "hard") return { size: 5, target: 13, maxMisses: 3, spawnMs: 620, lifeMs: 1000, simultaneous: 2 };
+    if (appState.difficulty === "chaos") return { size: 5, target: 15, maxMisses: 3, spawnMs: 520, lifeMs: 850, simultaneous: 2 };
+    return { size: 4, target: 12, maxMisses: 4, spawnMs: 720, lifeMs: 1120, simultaneous: 2 };
+  }
+
+  function clearActivity() {
+    if (spawnIntervalId) clearInterval(spawnIntervalId);
+    spawnIntervalId = null;
+    cells.forEach((cell) => {
+      if (cell.timeoutId) clearTimeout(cell.timeoutId);
+      cell.timeoutId = null;
+      cell.active = false;
+    });
+  }
+
+  function updateHud() {
+    const config = getConfig();
+    metaEl.textContent = `Stage ${stageLevel} | Hits ${hits}/${config.target + Math.floor((stageLevel - 1) * 2)} | Misses ${misses}/${config.maxMisses}`;
+    refreshLevel();
+  }
+
+  function renderGrid() {
+    const config = getConfig();
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${config.size}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    cells.forEach((cell, index) => {
+      const button = document.createElement("button");
+      button.className = "secondary-button";
+      button.style.minHeight = "62px";
+      button.style.borderRadius = "18px";
+      button.style.border = "1px solid rgba(255,255,255,0.08)";
+      button.style.background = cell.active ? "linear-gradient(135deg, rgba(242, 156, 74, 0.9), rgba(255, 219, 117, 0.9))" : "rgba(255,255,255,0.05)";
+      button.style.boxShadow = cell.active ? "0 0 24px rgba(255, 197, 90, 0.45)" : "none";
+      button.textContent = cell.active ? "POP" : "";
+      button.addEventListener("click", () => tapCell(index));
+      gridEl.appendChild(button);
+      cell.button = button;
+    });
+    updateHud();
+  }
+
+  function deactivateCell(index, expired = false) {
+    const cell = cells[index];
+    if (!cell || !cell.active) return;
+    if (cell.timeoutId) clearTimeout(cell.timeoutId);
+    cell.timeoutId = null;
+    cell.active = false;
+    if (expired && running) {
+      misses += 1;
+      if (misses >= getConfig().maxMisses) {
+        running = false;
+        clearActivity();
+        renderGrid();
+        setStatus("Grid slipped away");
+        scheduleAutoReset(900);
+        return;
+      }
+    }
+    renderGrid();
+  }
+
+  function activateCell(index) {
+    const config = getConfig();
+    const cell = cells[index];
+    cell.active = true;
+    cell.timeoutId = window.setTimeout(() => deactivateCell(index, true), Math.max(480, config.lifeMs - stageLevel * 24));
+  }
+
+  function spawnGlow() {
+    if (!running) return;
+    const config = getConfig();
+    const targetSimultaneous = Math.min(cells.length, config.simultaneous + Math.floor((stageLevel - 1) / 4));
+    let activeCount = cells.filter((cell) => cell.active).length;
+    while (activeCount < targetSimultaneous) {
+      const available = cells.map((cell, index) => ({ cell, index })).filter(({ cell }) => !cell.active);
+      if (!available.length) break;
+      const choice = available[Math.floor(Math.random() * available.length)];
+      activateCell(choice.index);
+      activeCount += 1;
+    }
+    renderGrid();
+  }
+
+  function targetHits() {
+    return getConfig().target + Math.floor((stageLevel - 1) * 2);
+  }
+
+  function tapCell(index) {
+    if (!running) return;
+    const cell = cells[index];
+    if (!cell?.active) {
+      setStatus("Hit the glowing cells");
+      return;
+    }
+    deactivateCell(index, false);
+    hits += 1;
+    setScore(appState.score + stageLevel * 8);
+    if (hits >= targetHits()) {
+      running = false;
+      clearActivity();
+      setStatus("Grid cleared");
+      window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+      return;
+    }
+    spawnGlow();
+  }
+
+  function setupStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    hits = 0;
+    misses = 0;
+    clearActivity();
+    cells = Array.from({ length: config.size * config.size }, () => ({ active: false, timeoutId: null, button: null }));
+    if (!preserveScore) setScore(0);
+    running = false;
+    renderGrid();
+  }
+
+  return {
+    id: "glow",
+    title: "Glow Grid",
+    tagline: "Click before it fades",
+    subtitle: "Pop the bright tiles before they blink out and the misses pile up.",
+    description: "A fast reaction game where glowing tiles appear all over the grid. Click enough of them before too many fade away to advance.",
+    controls: "Click the glowing tiles before they expire.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Glow Grid</strong>
+            <span class="muted" data-meta>Stage 1 | Hits 0/0 | Misses 0/0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04);">
+            <div data-grid></div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      spawnGlow();
+      spawnIntervalId = window.setInterval(spawnGlow, Math.max(260, getConfig().spawnMs - stageLevel * 18));
+      setStatus("Pop the bright cells");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      clearActivity();
+    },
+  };
+}
+
+function createRingStopGame() {
+  let wrapper;
+  let metaEl;
+  let targetEl;
+  let markerEl;
+  let railEl;
+  let running = false;
+  let stageLevel = 1;
+  let hits = 0;
+  let failures = 0;
+  let position = 0.18;
+  let direction = 1;
+  let lastTime = 0;
+  let frameId = null;
+  let targetStart = 0.4;
+  let targetWidth = 0.18;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { speed: 0.32, width: 0.2, needed: 3 };
+    if (appState.difficulty === "easy") return { speed: 0.38, width: 0.17, needed: 3 };
+    if (appState.difficulty === "hard") return { speed: 0.58, width: 0.12, needed: 4 };
+    if (appState.difficulty === "chaos") return { speed: 0.7, width: 0.095, needed: 5 };
+    return { speed: 0.48, width: 0.145, needed: 4 };
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Hits ${hits}/${getConfig().needed} | Misses ${failures}`;
+    refreshLevel();
+  }
+
+  function rollTarget() {
+    const config = getConfig();
+    targetWidth = Math.max(0.06, config.width - stageLevel * 0.006);
+    targetStart = 0.08 + Math.random() * (0.84 - targetWidth);
+  }
+
+  function renderMeter() {
+    railEl.style.position = "relative";
+    railEl.style.height = "28px";
+    railEl.style.borderRadius = "999px";
+    railEl.style.background = "rgba(255,255,255,0.06)";
+    railEl.style.border = "1px solid rgba(255,255,255,0.08)";
+    targetEl.style.position = "absolute";
+    targetEl.style.top = "3px";
+    targetEl.style.bottom = "3px";
+    targetEl.style.left = `${targetStart * 100}%`;
+    targetEl.style.width = `${targetWidth * 100}%`;
+    targetEl.style.borderRadius = "999px";
+    targetEl.style.background = "linear-gradient(135deg, rgba(95, 214, 157, 0.95), rgba(56, 182, 255, 0.9))";
+    markerEl.style.position = "absolute";
+    markerEl.style.top = "-4px";
+    markerEl.style.width = "18px";
+    markerEl.style.height = "36px";
+    markerEl.style.borderRadius = "999px";
+    markerEl.style.background = "linear-gradient(135deg, rgba(250, 121, 86, 0.95), rgba(255, 207, 107, 0.95))";
+    markerEl.style.left = `calc(${position * 100}% - 9px)`;
+  }
+
+  function loop(timestamp) {
+    if (!running) return;
+    const config = getConfig();
+    if (!lastTime) lastTime = timestamp;
+    const dt = Math.min(32, timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    position += direction * (config.speed + stageLevel * 0.02) * dt;
+    if (position >= 0.99) {
+      position = 0.99;
+      direction = -1;
+    } else if (position <= 0.01) {
+      position = 0.01;
+      direction = 1;
+    }
+    renderMeter();
+    frameId = window.requestAnimationFrame(loop);
+  }
+
+  function setupStage(level, preserveScore = false) {
+    stageLevel = level;
+    hits = 0;
+    failures = 0;
+    running = false;
+    if (frameId) cancelAnimationFrame(frameId);
+    frameId = null;
+    lastTime = 0;
+    position = 0.18;
+    direction = 1;
+    rollTarget();
+    if (!preserveScore) setScore(0);
+    updateHud();
+    renderMeter();
+  }
+
+  function attempt() {
+    if (!running) return;
+    const inZone = position >= targetStart && position <= targetStart + targetWidth;
+    if (inZone) {
+      hits += 1;
+      setScore(appState.score + stageLevel * 25);
+      if (hits >= getConfig().needed) {
+        running = false;
+        if (frameId) cancelAnimationFrame(frameId);
+        frameId = null;
+        setStatus("Perfect timing");
+        window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+        return;
+      }
+      setStatus("Nice hit");
+    } else {
+      failures += 1;
+      hits = Math.max(0, hits - 1);
+      setStatus("Missed the zone");
+    }
+    rollTarget();
+    updateHud();
+    renderMeter();
+  }
+
+  return {
+    id: "ring",
+    title: "Ring Stop",
+    tagline: "Stop in the zone",
+    subtitle: "Freeze the moving marker inside the sweet spot and string enough clean hits together.",
+    description: "A timing game where a marker sweeps across the rail. Stop it inside the target zone enough times to clear each stage.",
+    controls: "Press Space or click Lock It to stop the marker.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Ring Stop</strong>
+            <span class="muted" data-meta>Stage 1 | Hits 0/0 | Misses 0</span>
+          </div>
+          <div style="display:grid; gap:16px; border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:20px; background:rgba(255,255,255,0.04);">
+            <div data-rail>
+              <div data-target></div>
+              <div data-marker></div>
+            </div>
+            <button class="primary-button" data-lock>Lock It</button>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      railEl = wrapper.querySelector("[data-rail]");
+      targetEl = wrapper.querySelector("[data-target]");
+      markerEl = wrapper.querySelector("[data-marker]");
+      wrapper.querySelector("[data-lock]").addEventListener("click", attempt);
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      lastTime = 0;
+      frameId = window.requestAnimationFrame(loop);
+      setStatus("Stop inside the zone");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = null;
+    },
+    onKeyDown(event) {
+      if (event.key === " ") {
+        attempt();
+      }
+    },
+  };
+}
+
+function createLaserLockGame() {
+  let wrapper;
+  let metaEl;
+  let boardWrapEl;
+  let running = false;
+  let stageLevel = 1;
+  let moves = 0;
+  let size = 4;
+  let board = [];
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 4, scrambles: 4 };
+    if (appState.difficulty === "easy") return { size: 4, scrambles: 5 };
+    if (appState.difficulty === "hard") return { size: 5, scrambles: 7 };
+    if (appState.difficulty === "chaos") return { size: 6, scrambles: 9 };
+    return { size: 5, scrambles: 6 };
+  }
+
+  function toggleRow(row) {
+    board[row] = board[row].map((cell) => !cell);
+  }
+
+  function toggleCol(col) {
+    for (let row = 0; row < size; row += 1) {
+      board[row][col] = !board[row][col];
+    }
+  }
+
+  function solved() {
+    return board.every((row) => row.every(Boolean));
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Size ${size}x${size} | Moves ${moves}`;
+    refreshLevel();
+  }
+
+  function renderBoard() {
+    boardWrapEl.innerHTML = "";
+    const columnBar = document.createElement("div");
+    columnBar.style.display = "grid";
+    columnBar.style.gridTemplateColumns = `80px repeat(${size}, minmax(0, 1fr))`;
+    columnBar.style.gap = "10px";
+    columnBar.style.marginBottom = "10px";
+    const spacer = document.createElement("div");
+    spacer.textContent = "Cols";
+    spacer.className = "muted";
+    columnBar.appendChild(spacer);
+    for (let col = 0; col < size; col += 1) {
+      const button = document.createElement("button");
+      button.className = "mini-button";
+      button.textContent = `C${col + 1}`;
+      button.disabled = !running;
+      button.addEventListener("click", () => handleColumn(col));
+      columnBar.appendChild(button);
+    }
+    boardWrapEl.appendChild(columnBar);
+
+    board.forEach((row, rowIndex) => {
+      const rowEl = document.createElement("div");
+      rowEl.style.display = "grid";
+      rowEl.style.gridTemplateColumns = `80px repeat(${size}, minmax(0, 1fr))`;
+      rowEl.style.gap = "10px";
+      rowEl.style.marginBottom = "10px";
+      const toggle = document.createElement("button");
+      toggle.className = "mini-button";
+      toggle.textContent = `R${rowIndex + 1}`;
+      toggle.disabled = !running;
+      toggle.addEventListener("click", () => handleRow(rowIndex));
+      rowEl.appendChild(toggle);
+      row.forEach((cell) => {
+        const tile = document.createElement("div");
+        tile.style.minHeight = "52px";
+        tile.style.borderRadius = "16px";
+        tile.style.border = "1px solid rgba(255,255,255,0.08)";
+        tile.style.background = cell ? "linear-gradient(135deg, rgba(99, 214, 146, 0.95), rgba(91, 214, 224, 0.95))" : "rgba(255,255,255,0.05)";
+        rowEl.appendChild(tile);
+      });
+      boardWrapEl.appendChild(rowEl);
+    });
+    updateHud();
+  }
+
+  function handleRow(row) {
+    if (!running) return;
+    toggleRow(row);
+    moves += 1;
+    renderBoard();
+    if (solved()) {
+      running = false;
+      setScore(appState.score + Math.max(20, stageLevel * 50 - moves * 2));
+      setStatus("Laser grid aligned");
+      window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+    }
+  }
+
+  function handleColumn(col) {
+    if (!running) return;
+    toggleCol(col);
+    moves += 1;
+    renderBoard();
+    if (solved()) {
+      running = false;
+      setScore(appState.score + Math.max(20, stageLevel * 50 - moves * 2));
+      setStatus("Laser grid aligned");
+      window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+    }
+  }
+
+  function setupStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    size = Math.min(config.size + Math.floor((stageLevel - 1) / 4), 7);
+    board = Array.from({ length: size }, () => Array.from({ length: size }, () => true));
+    for (let turn = 0; turn < config.scrambles + stageLevel; turn += 1) {
+      if (Math.random() < 0.5) toggleRow(Math.floor(Math.random() * size));
+      else toggleCol(Math.floor(Math.random() * size));
+    }
+    moves = 0;
+    running = false;
+    if (solved()) toggleRow(0);
+    if (!preserveScore) setScore(0);
+    renderBoard();
+  }
+
+  return {
+    id: "laser",
+    title: "Laser Lock",
+    tagline: "Toggle rows and columns",
+    subtitle: "Line up the entire grid by flipping whole rows and columns back to bright.",
+    description: "Every move flips an entire row or column. Turn the whole matrix bright to clear the stage.",
+    controls: "Click the row or column buttons to toggle them.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Laser Lock</strong>
+            <span class="muted" data-meta>Stage 1 | Size 0x0 | Moves 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04);" data-board></div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      boardWrapEl = wrapper.querySelector("[data-board]");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      renderBoard();
+      setStatus("Align every beam");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+    },
+  };
+}
+
+function createSafeStepsGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let stageLevel = 1;
+  let rows = 6;
+  let cols = 3;
+  let safePath = [];
+  let progress = 0;
+  let running = false;
+  let previewing = false;
+  let wrongTile = null;
+  let previewTimeout = null;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { rows: 5, cols: 3, previewMs: 2800 };
+    if (appState.difficulty === "easy") return { rows: 6, cols: 3, previewMs: 2200 };
+    if (appState.difficulty === "hard") return { rows: 7, cols: 4, previewMs: 1500 };
+    if (appState.difficulty === "chaos") return { rows: 8, cols: 5, previewMs: 1100 };
+    return { rows: 6, cols: 4, previewMs: 1800 };
+  }
+
+  function clearPreviewTimer() {
+    if (previewTimeout) clearTimeout(previewTimeout);
+    previewTimeout = null;
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Row ${Math.min(rows, progress + 1)}/${rows} | Width ${cols}`;
+    refreshLevel();
+  }
+
+  function renderBoard() {
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const button = document.createElement("button");
+        button.className = "secondary-button";
+        button.style.minHeight = "58px";
+        button.style.borderRadius = "16px";
+        const currentRow = rows - 1 - progress;
+        const showSafe = previewing || row > currentRow || (row === currentRow && !running);
+        if (row > currentRow && col === safePath[row]) {
+          button.style.background = "linear-gradient(135deg, rgba(95, 214, 157, 0.95), rgba(62, 193, 211, 0.9))";
+          button.textContent = "SAFE";
+        } else if (showSafe && col === safePath[row]) {
+          button.style.background = "linear-gradient(135deg, rgba(95, 214, 157, 0.8), rgba(62, 193, 211, 0.8))";
+          button.textContent = previewing ? "SAFE" : "";
+        } else if (wrongTile && wrongTile.row === row && wrongTile.col === col) {
+          button.style.background = "linear-gradient(135deg, rgba(245, 92, 92, 0.92), rgba(255, 170, 90, 0.92))";
+          button.textContent = "X";
+        } else {
+          button.style.background = "rgba(255,255,255,0.05)";
+          button.textContent = "";
+        }
+        button.disabled = !running || row !== currentRow;
+        button.addEventListener("click", () => chooseTile(row, col));
+        gridEl.appendChild(button);
+      }
+    }
+    updateHud();
+  }
+
+  function setupStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    rows = config.rows + Math.min(2, Math.floor((stageLevel - 1) / 3));
+    cols = config.cols;
+    safePath = [];
+    for (let row = 0; row < rows; row += 1) {
+      if (row === 0) {
+        safePath.push(Math.floor(Math.random() * cols));
+        continue;
+      }
+      const drift = Math.floor(Math.random() * 3) - 1;
+      safePath.push(clamp(safePath[row - 1] + drift, 0, cols - 1));
+    }
+    progress = 0;
+    running = false;
+    previewing = false;
+    wrongTile = null;
+    clearPreviewTimer();
+    if (!preserveScore) setScore(0);
+    renderBoard();
+  }
+
+  function startPreview() {
+    const config = getConfig();
+    previewing = true;
+    running = false;
+    wrongTile = null;
+    renderBoard();
+    setStatus("Memorize the safe path");
+    clearPreviewTimer();
+    previewTimeout = window.setTimeout(() => {
+      previewing = false;
+      running = true;
+      renderBoard();
+      setStatus("Climb the path");
+    }, Math.max(500, config.previewMs - stageLevel * 40));
+  }
+
+  function chooseTile(row, col) {
+    if (!running) return;
+    const currentRow = rows - 1 - progress;
+    if (row !== currentRow) return;
+    if (col === safePath[row]) {
+      progress += 1;
+      wrongTile = null;
+      setScore(appState.score + stageLevel * 18);
+      if (progress >= rows) {
+        running = false;
+        setStatus("Path cleared");
+        window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+        return;
+      }
+      setStatus("Safe step");
+      renderBoard();
+      return;
+    }
+    wrongTile = { row, col };
+    running = false;
+    renderBoard();
+    setStatus("Wrong tile");
+    previewTimeout = window.setTimeout(() => startPreview(), 700);
+  }
+
+  return {
+    id: "steps",
+    title: "Safe Steps",
+    tagline: "Memorize the path",
+    subtitle: "Study the safe route, then climb the board without stepping on the wrong tile.",
+    description: "A memory path challenge. Watch the safe route, then click the correct tile in each row from the bottom to the top.",
+    controls: "Click one tile per row after the preview disappears.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Safe Steps</strong>
+            <span class="muted" data-meta>Stage 1 | Row 1/1 | Width 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04);" data-grid></div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      setupStage(1);
+    },
+    start() {
+      if (running || previewing) return;
+      clearAutoReset();
+      startPreview();
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      previewing = false;
+      clearPreviewTimer();
+    },
+  };
+}
+
+function createStormRiderGame() {
+  let shell;
+  let ctx;
+  let frameId = null;
+  let running = false;
+  let lastTime = 0;
+  let stageLevel = 1;
+  let player = { x: 210, y: 150, radius: 12 };
+  let keys = new Set();
+  let storms = [];
+  let orb = { x: 200, y: 120, radius: 8 };
+  let collected = 0;
+  let goal = 5;
+  let shields = 3;
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { speed: 150, stormCount: 2, stormSpeed: 72, shields: 4, goal: 4 };
+    if (appState.difficulty === "easy") return { speed: 165, stormCount: 3, stormSpeed: 84, shields: 4, goal: 5 };
+    if (appState.difficulty === "hard") return { speed: 190, stormCount: 4, stormSpeed: 110, shields: 3, goal: 7 };
+    if (appState.difficulty === "chaos") return { speed: 210, stormCount: 5, stormSpeed: 126, shields: 2, goal: 8 };
+    return { speed: 178, stormCount: 4, stormSpeed: 96, shields: 3, goal: 6 };
+  }
+
+  function randomPoint(radius = 12) {
+    return {
+      x: radius + Math.random() * (420 - radius * 2),
+      y: radius + Math.random() * (300 - radius * 2),
+    };
+  }
+
+  function distance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  function spawnStorm() {
+    const point = randomPoint(14);
+    const angle = Math.random() * Math.PI * 2;
+    return {
+      ...point,
+      radius: 14,
+      vx: Math.cos(angle) * (getConfig().stormSpeed + Math.random() * 30 + stageLevel * 3),
+      vy: Math.sin(angle) * (getConfig().stormSpeed + Math.random() * 30 + stageLevel * 3),
+    };
+  }
+
+  function placeOrb() {
+    orb = { ...randomPoint(10), radius: 9 };
+  }
+
+  function updateHud() {
+    shell.hud.stage.textContent = `Stage ${stageLevel}`;
+    shell.hud.goal.textContent = `Goal ${collected}/${goal}`;
+    shell.hud.shields.textContent = `Shields ${shields}`;
+    refreshLevel();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, shell.canvas.width, shell.canvas.height);
+    ctx.fillStyle = "rgba(13, 20, 35, 0.92)";
+    ctx.fillRect(0, 0, shell.canvas.width, shell.canvas.height);
+
+    ctx.fillStyle = "rgba(82, 220, 248, 0.92)";
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    storms.forEach((storm) => {
+      ctx.fillStyle = "rgba(245, 97, 97, 0.92)";
+      ctx.beginPath();
+      ctx.arc(storm.x, storm.y, storm.radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.fillStyle = "rgba(255, 203, 88, 0.95)";
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y - player.radius);
+    ctx.lineTo(player.x + player.radius, player.y + player.radius);
+    ctx.lineTo(player.x - player.radius, player.y + player.radius);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function setupStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    player = { x: 210, y: 150, radius: 12 };
+    collected = 0;
+    goal = config.goal + Math.floor((stageLevel - 1) * 1.5);
+    shields = config.shields;
+    storms = Array.from({ length: config.stormCount + Math.min(2, Math.floor((stageLevel - 1) / 3)) }, spawnStorm);
+    placeOrb();
+    running = false;
+    lastTime = 0;
+    if (!preserveScore) setScore(0);
+    updateHud();
+    draw();
+  }
+
+  function tick(timestamp) {
+    if (!running) return;
+    const config = getConfig();
+    if (!lastTime) lastTime = timestamp;
+    const dt = Math.min(32, timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+
+    const dx = (keys.has("ArrowRight") || keys.has("d") ? 1 : 0) - (keys.has("ArrowLeft") || keys.has("a") ? 1 : 0);
+    const dy = (keys.has("ArrowDown") || keys.has("s") ? 1 : 0) - (keys.has("ArrowUp") || keys.has("w") ? 1 : 0);
+    player.x = clamp(player.x + dx * config.speed * dt, player.radius, shell.canvas.width - player.radius);
+    player.y = clamp(player.y + dy * config.speed * dt, player.radius, shell.canvas.height - player.radius);
+
+    storms.forEach((storm) => {
+      storm.x += storm.vx * dt;
+      storm.y += storm.vy * dt;
+      if (storm.x <= storm.radius || storm.x >= shell.canvas.width - storm.radius) storm.vx *= -1;
+      if (storm.y <= storm.radius || storm.y >= shell.canvas.height - storm.radius) storm.vy *= -1;
+      storm.x = clamp(storm.x, storm.radius, shell.canvas.width - storm.radius);
+      storm.y = clamp(storm.y, storm.radius, shell.canvas.height - storm.radius);
+      if (distance(storm, player) < storm.radius + player.radius) {
+        shields -= 1;
+        Object.assign(storm, spawnStorm());
+        if (shields <= 0) {
+          running = false;
+          setStatus("Storm wiped you out");
+          window.setTimeout(() => setupStage(1), 800);
+          return;
+        }
+      }
+    });
+    if (!running) {
+      updateHud();
+      draw();
+      return;
+    }
+
+    if (distance(orb, player) < orb.radius + player.radius) {
+      collected += 1;
+      setScore(appState.score + stageLevel * 14);
+      placeOrb();
+      if (collected >= goal) {
+        running = false;
+        setStatus("Storm routed");
+        updateHud();
+        draw();
+        window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+        return;
+      }
+    }
+
+    updateHud();
+    draw();
+    frameId = window.requestAnimationFrame(tick);
+  }
+
+  return {
+    id: "storm",
+    title: "Storm Rider",
+    tagline: "Collect through the storm",
+    subtitle: "Sweep up energy orbs while red storm cores ricochet around the arena.",
+    description: "A fast arena dodge game. Steer through the field, collect enough blue orbs, and avoid the red storm cores.",
+    controls: "Use arrow keys or WASD to move.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "stage", label: "Stage 1" },
+          { id: "goal", label: "Goal 0/0" },
+          { id: "shields", label: "Shields 0" },
+        ],
+      });
+      stage.innerHTML = "";
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 420;
+      shell.canvas.height = 300;
+      ctx = shell.canvas.getContext("2d");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      lastTime = 0;
+      setStatus("Collect the blue orbs");
+      frameId = window.requestAnimationFrame(tick);
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      keys.clear();
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = null;
+    },
+    onKeyDown(event) {
+      keys.add(event.key);
+    },
+    onKeyUp(event) {
+      keys.delete(event.key);
+    },
+  };
+}
+
+function createPatternPanicGame() {
+  let wrapper;
+  let metaEl;
+  let sequenceEl;
+  let progressEl;
+  let timerEl;
+  let timerId = null;
+  let running = false;
+  let stageLevel = 1;
+  let sequence = [];
+  let index = 0;
+  let timeLeft = 0;
+  const symbols = ["←", "↑", "→", "↓"];
+  const keyMap = {
+    ArrowLeft: "←",
+    ArrowUp: "↑",
+    ArrowRight: "→",
+    ArrowDown: "↓",
+    a: "←",
+    w: "↑",
+    d: "→",
+    s: "↓",
+  };
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { length: 4, time: 6.4 };
+    if (appState.difficulty === "easy") return { length: 5, time: 6 };
+    if (appState.difficulty === "hard") return { length: 7, time: 5 };
+    if (appState.difficulty === "chaos") return { length: 8, time: 4.4 };
+    return { length: 6, time: 5.5 };
+  }
+
+  function clearTimer() {
+    if (timerId) clearInterval(timerId);
+    timerId = null;
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Input ${index}/${sequence.length} | Time ${timeLeft.toFixed(1)}s`;
+    if (progressEl) progressEl.textContent = sequence.map((symbol, symbolIndex) => (symbolIndex < index ? "✓" : symbol)).join(" ");
+    if (timerEl) timerEl.textContent = `${timeLeft.toFixed(1)}s`;
+    refreshLevel();
+  }
+
+  function renderSequence() {
+    if (!sequenceEl) return;
+    sequenceEl.textContent = sequence.join(" ");
+    updateHud();
+  }
+
+  function setupStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    sequence = Array.from({ length: config.length + Math.floor((stageLevel - 1) / 2) }, () => symbols[Math.floor(Math.random() * symbols.length)]);
+    index = 0;
+    timeLeft = Math.max(2.5, config.time - stageLevel * 0.08 + sequence.length * 0.18);
+    running = false;
+    clearTimer();
+    if (!preserveScore) setScore(0);
+    renderSequence();
+  }
+
+  function fail(message) {
+    running = false;
+    clearTimer();
+    setStatus(message);
+    window.setTimeout(() => setupStage(Math.max(1, stageLevel)), 700);
+  }
+
+  function succeed() {
+    running = false;
+    clearTimer();
+    setScore(appState.score + stageLevel * 28);
+    setStatus("Pattern cleared");
+    window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+  }
+
+  function input(symbol) {
+    if (!running) return;
+    if (sequence[index] !== symbol) {
+      fail("Wrong input");
+      return;
+    }
+    index += 1;
+    updateHud();
+    if (index >= sequence.length) {
+      succeed();
+    }
+  }
+
+  function beginTimer() {
+    clearTimer();
+    timerId = window.setInterval(() => {
+      timeLeft = Math.max(0, timeLeft - 0.1);
+      updateHud();
+      if (timeLeft <= 0) {
+        fail("Out of time");
+      }
+    }, 100);
+  }
+
+  return {
+    id: "panic",
+    title: "Pattern Panic",
+    tagline: "Hit the arrow chain",
+    subtitle: "Burn through the arrow pattern before the clock runs out.",
+    description: "A twitchy arrow-input game. Read the displayed pattern and punch it in before the timer empties.",
+    controls: "Use arrow keys or WASD, or click the arrow buttons.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Pattern Panic</strong>
+            <span class="muted" data-meta>Stage 1 | Input 0/0 | Time 0.0s</span>
+          </div>
+          <div style="display:grid; gap:14px; border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:20px; background:rgba(255,255,255,0.04);">
+            <div class="info-chip-row">
+              <span class="info-chip" data-progress></span>
+              <span class="info-chip" data-timer>0.0s</span>
+            </div>
+            <div style="font-size:2rem; font-weight:800; letter-spacing:0.2rem; text-align:center;" data-sequence></div>
+            <div class="action-button-grid">
+              <button class="mini-button" data-arrow="←">←</button>
+              <button class="mini-button" data-arrow="↑">↑</button>
+              <button class="mini-button" data-arrow="→">→</button>
+              <button class="mini-button" data-arrow="↓">↓</button>
+            </div>
+          </div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      sequenceEl = wrapper.querySelector("[data-sequence]");
+      progressEl = wrapper.querySelector("[data-progress]");
+      timerEl = wrapper.querySelector("[data-timer]");
+      wrapper.querySelectorAll("[data-arrow]").forEach((button) => {
+        button.addEventListener("click", () => input(button.dataset.arrow));
+      });
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      beginTimer();
+      updateHud();
+      setStatus("Match the pattern");
+    },
+    reset() {
+      setupStage(1);
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      clearTimer();
+    },
+    onKeyDown(event) {
+      const symbol = keyMap[event.key];
+      if (symbol) input(symbol);
+    },
+  };
+}
+
+function createSwapSortGame() {
+  let wrapper;
+  let metaEl;
+  let gridEl;
+  let running = false;
+  let stageLevel = 1;
+  let size = 3;
+  let moves = 0;
+  let selectedIndex = null;
+  let tiles = [];
+
+  function getConfig() {
+    if (appState.difficulty === "chill") return { size: 3, scrambles: 4 };
+    if (appState.difficulty === "easy") return { size: 3, scrambles: 6 };
+    if (appState.difficulty === "hard") return { size: 4, scrambles: 10 };
+    if (appState.difficulty === "chaos") return { size: 5, scrambles: 14 };
+    return { size: 4, scrambles: 8 };
+  }
+
+  function solved() {
+    return tiles.every((value, index) => value === index + 1);
+  }
+
+  function updateHud() {
+    metaEl.textContent = `Stage ${stageLevel} | Size ${size}x${size} | Moves ${moves}`;
+    refreshLevel();
+  }
+
+  function renderBoard() {
+    gridEl.innerHTML = "";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+    gridEl.style.gap = "10px";
+    tiles.forEach((value, index) => {
+      const button = document.createElement("button");
+      button.className = selectedIndex === index ? "primary-button" : "secondary-button";
+      button.style.minHeight = "58px";
+      button.style.fontWeight = "800";
+      button.textContent = String(value);
+      button.disabled = !running;
+      button.addEventListener("click", () => chooseTile(index));
+      gridEl.appendChild(button);
+    });
+    updateHud();
+  }
+
+  function chooseTile(index) {
+    if (!running) return;
+    if (selectedIndex === null) {
+      selectedIndex = index;
+      renderBoard();
+      return;
+    }
+    if (selectedIndex === index) {
+      selectedIndex = null;
+      renderBoard();
+      return;
+    }
+    [tiles[selectedIndex], tiles[index]] = [tiles[index], tiles[selectedIndex]];
+    selectedIndex = null;
+    moves += 1;
+    renderBoard();
+    if (solved()) {
+      running = false;
+      setScore(appState.score + Math.max(30, stageLevel * 60 - moves * 2));
+      setStatus("Board sorted");
+      window.setTimeout(() => setupStage(stageLevel + 1, true), 420);
+    }
+  }
+
+  function setupStage(level, preserveScore = false) {
+    const config = getConfig();
+    stageLevel = level;
+    size = Math.min(config.size + Math.floor((stageLevel - 1) / 5), 5);
+    tiles = Array.from({ length: size * size }, (_, index) => index + 1);
+    for (let turn = 0; turn < config.scrambles + stageLevel * 2; turn += 1) {
+      const a = Math.floor(Math.random() * tiles.length);
+      let b = Math.floor(Math.random() * tiles.length);
+      if (a === b) b = (b + 1) % tiles.length;
+      [tiles[a], tiles[b]] = [tiles[b], tiles[a]];
+    }
+    if (solved()) [tiles[0], tiles[1]] = [tiles[1], tiles[0]];
+    moves = 0;
+    selectedIndex = null;
+    running = false;
+    if (!preserveScore) setScore(0);
+    renderBoard();
+  }
+
+  return {
+    id: "swap",
+    title: "Swap Sort",
+    tagline: "Swap tiles into order",
+    subtitle: "Trade any two tiles and rebuild the board from lowest to highest.",
+    description: "A clean swap puzzle. Pick any two tiles to swap them and sort the whole board into ascending order.",
+    controls: "Click one tile, then click another to swap them.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      stage.innerHTML = "";
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <strong>Swap Sort</strong>
+            <span class="muted" data-meta>Stage 1 | Size 0x0 | Moves 0</span>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:18px; background:rgba(255,255,255,0.04);" data-grid></div>
+        </div>
+      `);
+      stage.appendChild(wrapper);
+      metaEl = wrapper.querySelector("[data-meta]");
+      gridEl = wrapper.querySelector("[data-grid]");
+      setupStage(1);
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      renderBoard();
+      setStatus("Sort the board");
     },
     reset() {
       setupStage(1);

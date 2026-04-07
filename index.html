@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Browser Arcade</title>
-    <link rel="stylesheet" href="./styles.css?v=20260406aa" />
+    <link rel="stylesheet" href="./styles.css?v=20260407c" />
   </head>
   <body>
     <div class="page-shell">
@@ -70,6 +70,16 @@
                 <option value="normal">Normal</option>
                 <option value="hard">Hard</option>
                 <option value="chaos">Chaos</option>
+              </select>
+            </label>
+            <label class="field-group" for="startDelaySelect">
+              <span class="field-label">Start timer</span>
+              <select id="startDelaySelect" class="field-control">
+                <option value="0">Off</option>
+                <option value="1">1 second</option>
+                <option value="3">3 seconds</option>
+                <option value="5">5 seconds</option>
+                <option value="10">10 seconds</option>
               </select>
             </label>
             <p id="difficultyHint" class="muted compact-copy"></p>
@@ -143,6 +153,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260406aa"></script>
+    <script src="./app.js?v=20260407c"></script>
   </body>
 </html>

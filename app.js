@@ -1,8 +1,8 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260408a";
-const NEW_GAME_IDS = ["glow", "ring", "laser", "steps", "storm", "panic", "swap"];
+const BUILD_VERSION = "20260409a";
+const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -127,7 +127,7 @@ const DIFFICULTY_PRESETS = {
 };
 
 const GAME_CATEGORIES = [
-  { label: "Action", ids: ["space", "tower", "cannon", "knife", "lander", "orb", "tunnel", "hopper", "dodge", "snout", "maze", "pong", "flappy", "catch", "sweep", "rhythm", "jetpack", "storm"] },
+  { label: "Action", ids: ["space", "tower", "cannon", "knife", "lander", "orb", "tunnel", "hopper", "dodge", "snout", "maze", "pong", "flappy", "dash", "catch", "sweep", "rhythm", "jetpack", "storm"] },
   { label: "Arcade", ids: ["snake", "breakout", "blockdrop", "hoop", "plinko", "stacker", "whack", "reaction", "typing", "clicker", "rps", "bubble", "slots", "target", "balance", "spin", "gates", "glow", "ring", "panic"] },
   { label: "Puzzle", ids: ["memory", "merge", "vault", "cups", "marble", "flood", "lights", "crates", "mines", "hangman", "scramble", "code", "math", "dig", "recall", "trail", "slide", "pipes", "laser", "steps", "swap"] },
 ];
@@ -178,6 +178,7 @@ const appState = {
 const games = {
   snake: createSnakeGame(),
   flappy: createFlappyGame(),
+  dash: createDashCubeGame(),
   breakout: createBreakoutGame(),
   target: createTargetTapGame(),
   catch: createCatchCrazeGame(),
@@ -4478,6 +4479,7 @@ function createPongGame() {
 
 function createMemoryGame() {
   let wrapper;
+  let stageLevel = 1;
   let cards = [];
   let firstPick = null;
   let secondPick = null;
@@ -4487,10 +4489,17 @@ function createMemoryGame() {
   let startedAt = 0;
   let timerId = null;
 
-  const symbols = ["🍒", "🎮", "⭐", "🚀", "🔥", "🧠", "⚡", "👾"];
+  const symbols = ["🍒", "🎮", "⭐", "🚀", "🔥", "🧠", "⚡", "👾", "🪐", "🎯", "🕹️", "💎"];
+
+  function getPairCount() {
+    const mode = appState.difficulty;
+    const base = mode === "chill" ? 4 : mode === "easy" ? 5 : mode === "hard" ? 7 : mode === "chaos" ? 8 : 6;
+    return clamp(base + Math.floor((stageLevel - 1) / 2), 4, 8);
+  }
 
   function buildCards() {
-    const shuffled = [...symbols, ...symbols]
+    const pool = symbols.slice(0, getPairCount());
+    const shuffled = [...pool, ...pool]
       .sort(() => Math.random() - 0.5)
       .map((symbol, index) => ({
         id: index,
@@ -4520,6 +4529,7 @@ function createMemoryGame() {
     });
 
     wrapper.querySelector('[data-meta="moves"]').textContent = `Moves ${moves}`;
+    wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
     const seconds = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
     wrapper.querySelector('[data-meta="time"]').textContent = `Time ${seconds}s`;
     refreshLevel();
@@ -4553,11 +4563,17 @@ function createMemoryGame() {
       firstPick = null;
       secondPick = null;
       matchedPairs += 1;
-      if (matchedPairs === symbols.length) {
+      if (matchedPairs === getPairCount()) {
         const bonus = Math.max(0, 200 - Math.floor((Date.now() - startedAt) / 1000) * 3);
         setScore(appState.score + bonus);
-        setStatus("Cleared");
+        setStatus(`Stage ${stageLevel} cleared`);
         clearInterval(timerId);
+        timerId = null;
+        window.setTimeout(() => {
+          stageLevel += 1;
+          resetState(true);
+          setStatus(`Stage ${stageLevel}`);
+        }, 550);
       }
       renderBoard();
       return;
@@ -4572,10 +4588,10 @@ function createMemoryGame() {
       secondPick = null;
       lock = false;
       renderBoard();
-    }, 700);
+    }, Math.max(280, 700 - stageLevel * 35));
   }
 
-  function resetState() {
+  function resetState(keepScore = false) {
     firstPick = null;
     secondPick = null;
     moves = 0;
@@ -4585,13 +4601,13 @@ function createMemoryGame() {
     if (timerId) clearInterval(timerId);
     timerId = null;
     buildCards();
-    setScore(0);
+    if (!keepScore) setScore(0);
     renderBoard();
   }
 
   return {
     id: "memory",
-    getLevelText: () => String(1 + matchedPairs),
+    getLevelText: () => String(stageLevel),
     title: "Match Flip",
     tagline: "Memory board challenge",
     subtitle: "Flip matching pairs quickly and cleanly for a better score.",
@@ -4603,6 +4619,7 @@ function createMemoryGame() {
       wrapper = createDomShell(`
         <div class="game-meta">
           <div class="info-chip-row">
+            <span class="info-chip" data-meta="stage">Stage 1</span>
             <span class="info-chip" data-meta="moves">Moves 0</span>
             <span class="info-chip" data-meta="time">Time 0s</span>
           </div>
@@ -4610,12 +4627,14 @@ function createMemoryGame() {
         <div class="memory-grid"></div>
       `);
       stage.appendChild(wrapper);
+      stageLevel = 1;
       resetState();
     },
     start() {
-      setStatus("Flip cards");
+      setStatus(`Stage ${stageLevel}`);
     },
     reset() {
+      stageLevel = 1;
       resetState();
       setStatus("Ready");
     },
@@ -5534,6 +5553,7 @@ function createWhackGame() {
   let running = false;
   let holeTimer = null;
   let countdown = null;
+  let level = 1;
 
   function renderBoard() {
     wrapper.querySelector(".whack-grid").innerHTML = Array.from({ length: 9 }, (_, index) => {
@@ -5543,8 +5563,18 @@ function createWhackGame() {
     wrapper.querySelectorAll("[data-hole]").forEach((button) => {
       button.addEventListener("click", () => hitHole(Number(button.dataset.hole)));
     });
+    wrapper.querySelector('[data-meta="level"]').textContent = `Level ${level}`;
     wrapper.querySelector('[data-meta="timer"]').textContent = `Time ${timeLeft}s`;
     refreshLevel();
+  }
+
+  function scheduleNextHole() {
+    if (!running) return;
+    if (holeTimer) clearTimeout(holeTimer);
+    holeTimer = window.setTimeout(() => {
+      nextHole();
+      scheduleNextHole();
+    }, Math.max(220, 760 - level * 55));
   }
 
   function nextHole() {
@@ -5557,13 +5587,14 @@ function createWhackGame() {
     if (index === activeHole) {
       setScore(appState.score + 10);
       activeHole = -1;
+      level = 1 + Math.floor(appState.score / 40);
       renderBoard();
     }
   }
 
   function stopGame(status) {
     running = false;
-    if (holeTimer) clearInterval(holeTimer);
+    if (holeTimer) clearTimeout(holeTimer);
     if (countdown) clearInterval(countdown);
     holeTimer = null;
     countdown = null;
@@ -5574,6 +5605,7 @@ function createWhackGame() {
 
   function resetState() {
     timeLeft = 20;
+    level = 1;
     setScore(0);
     stopGame("Ready");
   }
@@ -5592,6 +5624,7 @@ function createWhackGame() {
       wrapper = createDomShell(`
         <div class="game-meta">
           <div class="info-chip-row">
+            <span class="info-chip" data-meta="level">Level 1</span>
             <span class="info-chip" data-meta="timer">Time 20s</span>
           </div>
         </div>
@@ -5604,11 +5637,13 @@ function createWhackGame() {
       if (running) return;
       running = true;
       timeLeft = 20;
+      level = 1;
       setScore(0);
       nextHole();
-      holeTimer = window.setInterval(nextHole, 700);
+      scheduleNextHole();
       countdown = window.setInterval(() => {
         timeLeft -= 1;
+        level = 1 + Math.floor((20 - timeLeft) / 4) + Math.floor(appState.score / 60);
         renderBoard();
         if (timeLeft <= 0) {
           stopGame(`Finished - ${appState.score}`);
@@ -5741,6 +5776,7 @@ function createSimonGame() {
 
 function createHangmanGame() {
   let wrapper;
+  let stageLevel = 1;
   let word = "";
   let guessed = new Set();
   let lives = 6;
@@ -5757,13 +5793,24 @@ function createHangmanGame() {
     "rhythm",
   ];
 
-  function resetState() {
-    word = words[Math.floor(Math.random() * words.length)];
+  function getStageWord() {
+    const ordered = [...words].sort((left, right) => left.length - right.length);
+    return ordered[Math.min(ordered.length - 1, stageLevel - 1)];
+  }
+
+  function getStageLives() {
+    const mode = appState.difficulty;
+    const base = mode === "chill" ? 7 : mode === "easy" ? 6 : mode === "hard" ? 5 : mode === "chaos" ? 4 : 6;
+    return Math.max(3, base - Math.floor((stageLevel - 1) / 2));
+  }
+
+  function resetState(keepScore = false) {
+    word = getStageWord();
     guessed = new Set();
-    lives = 6;
-    setScore(0);
+    lives = getStageLives();
+    if (!keepScore) setScore(0);
     renderBoard();
-    setStatus("Guess the word");
+    setStatus(`Stage ${stageLevel}`);
   }
 
   function renderBoard() {
@@ -5773,6 +5820,7 @@ function createHangmanGame() {
           `<div class="letter-box">${guessed.has(letter) ? letter.toUpperCase() : "_"}</div>`,
       )
       .join("");
+    wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
     wrapper.querySelector('[data-meta="lives"]').textContent = `Lives ${lives}`;
     wrapper.querySelector(".keyboard-grid").innerHTML = "abcdefghijklmnopqrstuvwxyz"
       .split("")
@@ -5794,9 +5842,13 @@ function createHangmanGame() {
 
     const complete = [...word].every((char) => guessed.has(char));
     if (complete) {
-      setScore(lives * 10 + 10);
+      setScore(appState.score + lives * 10 + stageLevel * 6);
       renderBoard();
       setStatus(`Solved: ${word.toUpperCase()}`);
+      window.setTimeout(() => {
+        stageLevel += 1;
+        resetState(true);
+      }, 650);
       return;
     }
 
@@ -5812,10 +5864,7 @@ function createHangmanGame() {
 
   return {
     id: "hangman",
-    getLevelText: () =>
-      String(
-        1 + new Set([...word].filter((letter) => guessed.has(letter))).size,
-      ),
+    getLevelText: () => String(stageLevel),
     title: "Word Rescue",
     tagline: "Classic hangman guessing",
     subtitle: "Guess the secret word before your misses run out.",
@@ -5827,6 +5876,7 @@ function createHangmanGame() {
       wrapper = createDomShell(`
         <div class="game-meta">
           <div class="info-chip-row">
+            <span class="info-chip" data-meta="stage">Stage 1</span>
             <span class="info-chip" data-meta="lives">Lives 6</span>
           </div>
         </div>
@@ -5836,12 +5886,14 @@ function createHangmanGame() {
         </div>
       `);
       stage.appendChild(wrapper);
+      stageLevel = 1;
       resetState();
     },
     start() {
-      setStatus("Guess the word");
+      setStatus(`Stage ${stageLevel}`);
     },
     reset() {
+      stageLevel = 1;
       resetState();
     },
     destroy() {},
@@ -6266,10 +6318,13 @@ function createReactionGame() {
 
 function createTypingRushGame() {
   let wrapper;
+  let stageLevel = 1;
   let prompt = "";
   let typed = "";
   let startedAt = 0;
   let finished = false;
+  let timerId = null;
+  let timeLeft = 0;
   const prompts = {
     easy: [
       "Fast fingers win races.",
@@ -6304,15 +6359,34 @@ function createTypingRushGame() {
     ],
   };
 
-  function resetState() {
-    const pool = prompts[getDifficultyPreset().typingPool] || prompts.normal;
-    prompt = pool[Math.floor(Math.random() * pool.length)];
+  function getStagePool() {
+    if (stageLevel <= 2) return prompts.easy;
+    if (stageLevel <= 5) return prompts.normal;
+    return prompts.hard;
+  }
+
+  function getTimeLimit(nextPrompt) {
+    const mode = appState.difficulty;
+    const base = mode === "chill" ? 16 : mode === "easy" ? 14 : mode === "hard" ? 11 : mode === "chaos" ? 9 : 12;
+    return Math.max(4, base + nextPrompt.length * 0.06 - stageLevel * 0.4);
+  }
+
+  function stopTimer() {
+    if (timerId) clearInterval(timerId);
+    timerId = null;
+  }
+
+  function resetState(keepScore = false) {
+    const pool = getStagePool();
+    prompt = pool[(stageLevel - 1) % pool.length];
     typed = "";
     startedAt = 0;
     finished = false;
-    setScore(0);
+    timeLeft = getTimeLimit(prompt);
+    stopTimer();
+    if (!keepScore) setScore(0);
     renderPrompt();
-    setStatus("Type the line");
+    setStatus(`Stage ${stageLevel}`);
   }
 
   function renderPrompt() {
@@ -6325,6 +6399,8 @@ function createTypingRushGame() {
         return `<span class="${className}">${escapeHtml(char)}</span>`;
       })
       .join("");
+    wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
+    wrapper.querySelector('[data-meta="time"]').textContent = `${timeLeft.toFixed(1)}s`;
     wrapper.querySelector('[data-meta="progress"]').textContent = `${typed.length}/${prompt.length}`;
   }
 
@@ -6332,6 +6408,17 @@ function createTypingRushGame() {
     if (finished) return;
     if (!startedAt && event.key.length === 1) {
       startedAt = Date.now();
+      stopTimer();
+      timerId = window.setInterval(() => {
+        timeLeft = Math.max(0, timeLeft - 0.1);
+        renderPrompt();
+        if (timeLeft <= 0) {
+          finished = true;
+          stopTimer();
+          setStatus("Out of time");
+          scheduleAutoReset();
+        }
+      }, 100);
       setStatus("Typing");
     }
     if (event.key === "Backspace") {
@@ -6345,20 +6432,25 @@ function createTypingRushGame() {
 
     if (typed.length >= prompt.length) {
       finished = true;
+      stopTimer();
       const seconds = Math.max(1, (Date.now() - startedAt) / 1000);
       const words = prompt.trim().split(/\s+/).length;
       const wpm = Math.round((words / seconds) * 60);
       const accuracy =
         [...prompt].filter((char, index) => typed[index] === char).length / prompt.length;
-      const score = Math.max(0, Math.round(wpm * accuracy * 10));
-      setScore(score);
+      const score = Math.max(0, Math.round(wpm * accuracy * (10 + stageLevel)));
+      setScore(appState.score + score);
       setStatus(`Finished - ${wpm} WPM`);
+      window.setTimeout(() => {
+        stageLevel += 1;
+        resetState(true);
+      }, 650);
     }
   }
 
   return {
     id: "typing",
-    noLevels: true,
+    getLevelText: () => String(stageLevel),
     title: "Typing Rush",
     tagline: "Type racer practice",
     subtitle: "Finish short phrases fast and keep your mistakes low.",
@@ -6371,6 +6463,8 @@ function createTypingRushGame() {
         <div class="typing-card">
           <div class="game-meta">
             <div class="info-chip-row">
+              <span class="info-chip" data-meta="stage">Stage 1</span>
+              <span class="info-chip" data-meta="time">0.0s</span>
               <span class="info-chip" data-meta="progress">0/0</span>
             </div>
           </div>
@@ -6378,18 +6472,22 @@ function createTypingRushGame() {
         </div>
       `);
       stage.appendChild(wrapper);
+      stageLevel = 1;
       resetState();
     },
     start() {
-      setStatus(finished ? "Reset for a new phrase" : "Type the line");
+      setStatus(finished ? "Reset for a new phrase" : `Stage ${stageLevel}`);
     },
     reset() {
+      stageLevel = 1;
       resetState();
     },
     onKeyDown(event) {
       handleType(event);
     },
-    destroy() {},
+    destroy() {
+      stopTimer();
+    },
   };
 }
 
@@ -10623,6 +10721,12 @@ function createWordScrambleGame() {
     return 5;
   }
 
+  function getStagePool() {
+    if (stageLevel <= 3) return wordBank.easy;
+    if (stageLevel <= 7) return wordBank.normal;
+    return wordBank.hard;
+  }
+
   function updateHud() {
     wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
     wrapper.querySelector('[data-meta="tries"]').textContent = `Tries ${triesLeft}`;
@@ -10639,12 +10743,12 @@ function createWordScrambleGame() {
 
   function loadStage(level, keepScore = false) {
     stageLevel = level;
-    const pool = getPool();
+    const pool = getStagePool();
     const entry = pool[(level - 1) % pool.length];
     answer = entry.word.toLowerCase();
     hint = entry.hint;
     scrambled = scrambleWord(answer);
-    triesLeft = getTriesBase();
+    triesLeft = Math.max(2, getTriesBase() - Math.floor((stageLevel - 1) / 3));
     if (!keepScore) {
       setScore(0);
     } else {
@@ -10941,27 +11045,30 @@ function createLuckySlotsGame() {
   let spinning = false;
   let spinTimer = null;
   let reels = ["STAR", "STAR", "STAR"];
-  const symbols = ["STAR", "7", "BAR", "ORB", "GEM", "ROCKET"];
+  const symbols = ["STAR", "7", "BAR", "ORB", "GEM", "ROCKET", "SKULL", "VOID"];
+
+  function getActiveSymbols() {
+    const size = clamp(4 + Math.floor((round - 1) / 2), 4, symbols.length);
+    return symbols.slice(0, size);
+  }
 
   function getSpinSpeed() {
     const mode = appState.difficulty;
-    if (mode === "chill") return 10;
-    if (mode === "easy") return 12;
-    if (mode === "hard") return 18;
-    if (mode === "chaos") return 21;
-    return 15;
+    const base = mode === "chill" ? 10 : mode === "easy" ? 12 : mode === "hard" ? 18 : mode === "chaos" ? 21 : 15;
+    return base + Math.floor((round - 1) / 2);
   }
 
   function getPayout(values) {
+    if (values.includes("SKULL") && values.includes("VOID")) return 0;
     const counts = values.reduce((acc, value) => ({ ...acc, [value]: (acc[value] || 0) + 1 }), {});
     const entries = Object.entries(counts).sort((left, right) => right[1] - left[1]);
     const [symbol, count] = entries[0];
     if (count === 3) {
       const bonus = symbol === "7" ? 12 : symbol === "STAR" ? 9 : 7;
-      return bet * bonus;
+      return Math.max(bet * 2, Math.round(bet * Math.max(3, bonus - Math.floor((round - 1) / 3))));
     }
     if (count === 2) {
-      return bet * 2;
+      return Math.max(0, bet * 2 - Math.floor((round - 1) / 2));
     }
     return 0;
   }
@@ -11033,7 +11140,8 @@ function createLuckySlotsGame() {
     setStatus("Spinning...");
     spinTimer = window.setInterval(() => {
       ticks += 1;
-      reels = reels.map(() => symbols[Math.floor(Math.random() * symbols.length)]);
+      const activeSymbols = getActiveSymbols();
+      reels = reels.map(() => activeSymbols[Math.floor(Math.random() * activeSymbols.length)]);
       renderReels();
       if (ticks >= maxTicks) {
         finishSpin();
@@ -11106,15 +11214,17 @@ function createCodeBreakerGame() {
 
   function getGuessLimit() {
     const mode = appState.difficulty;
-    if (mode === "chill") return 11;
-    if (mode === "easy") return 10;
-    if (mode === "hard") return 7;
-    if (mode === "chaos") return 6;
-    return 8;
+    const base = mode === "chill" ? 11 : mode === "easy" ? 10 : mode === "hard" ? 7 : mode === "chaos" ? 6 : 8;
+    return Math.max(4, base - Math.floor((solvedRound - 1) / 2));
+  }
+
+  function getActiveColors() {
+    return colors.slice(0, clamp(4 + Math.floor((solvedRound - 1) / 2), 4, colors.length));
   }
 
   function buildAnswer() {
-    answer = Array.from({ length: 4 }, () => colors[Math.floor(Math.random() * colors.length)]);
+    const activeColors = getActiveColors();
+    answer = Array.from({ length: 4 }, () => activeColors[Math.floor(Math.random() * activeColors.length)]);
   }
 
   function updateHud() {
@@ -11134,7 +11244,7 @@ function createCodeBreakerGame() {
   }
 
   function renderPalette() {
-    wrapper.querySelector(".code-palette").innerHTML = colors
+    wrapper.querySelector(".code-palette").innerHTML = getActiveColors()
       .map(
         (color) =>
           `<button class="mini-button color-choice color-${color.toLowerCase()}" data-color="${color}">${color}</button>`,
@@ -15918,6 +16028,349 @@ function createSwapSortGame() {
     },
     destroy() {
       running = false;
+    },
+  };
+}
+
+function createDashCubeGame() {
+  let shell;
+  let ctx;
+  let animationId = null;
+  let running = false;
+  let distance = 0;
+  let stageLevel = 1;
+  let player;
+  let obstacles = [];
+  let particles = [];
+  let spawnTimer = 0;
+  let floorY = 298;
+  let jumpQueued = false;
+
+  function getConfig() {
+    const mode = appState.difficulty;
+    if (mode === "chill") return { speed: 5, gravity: 0.56, jump: 11.8, spawn: 112, gap: 76 };
+    if (mode === "easy") return { speed: 5.6, gravity: 0.6, jump: 12.3, spawn: 102, gap: 72 };
+    if (mode === "hard") return { speed: 7.2, gravity: 0.7, jump: 13.2, spawn: 86, gap: 60 };
+    if (mode === "chaos") return { speed: 8.1, gravity: 0.76, jump: 13.6, spawn: 76, gap: 54 };
+    return { speed: 6.3, gravity: 0.65, jump: 12.8, spawn: 94, gap: 66 };
+  }
+
+  function resetPlayer() {
+    player = {
+      x: 116,
+      y: floorY - 34,
+      size: 34,
+      vy: 0,
+      grounded: true,
+      angle: 0,
+    };
+  }
+
+  function resetState() {
+    running = false;
+    distance = 0;
+    stageLevel = 1;
+    spawnTimer = 0;
+    obstacles = [];
+    particles = [];
+    jumpQueued = false;
+    setScore(0);
+    resetPlayer();
+    draw();
+  }
+
+  function queueJump() {
+    if (!running) return;
+    jumpQueued = true;
+  }
+
+  function makeObstacle() {
+    const config = getConfig();
+    const scaledSpeed = config.speed + stageLevel * 0.16;
+    const typeRoll = Math.random();
+    if (typeRoll < 0.22 && stageLevel >= 3) {
+      return {
+        kind: "double",
+        x: 860,
+        width: 52,
+        height: 34,
+        speed: scaledSpeed,
+      };
+    }
+    if (typeRoll < 0.44 && stageLevel >= 5) {
+      return {
+        kind: "block",
+        x: 860,
+        width: 42,
+        height: 58,
+        speed: scaledSpeed,
+      };
+    }
+    return {
+      kind: "spike",
+      x: 860,
+      width: 34,
+      height: 34,
+      speed: scaledSpeed,
+    };
+  }
+
+  function spawnObstacle() {
+    const config = getConfig();
+    const last = obstacles[obstacles.length - 1];
+    if (last && 860 - (last.x + last.width) < config.gap + Math.random() * 40) return;
+    obstacles.push(makeObstacle());
+  }
+
+  function obstacleBounds(obstacle) {
+    return {
+      x: obstacle.x,
+      y: floorY - obstacle.height,
+      width: obstacle.width,
+      height: obstacle.height,
+    };
+  }
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  }
+
+  function playerBounds() {
+    return {
+      x: player.x + 4,
+      y: player.y + 4,
+      width: player.size - 8,
+      height: player.size - 8,
+    };
+  }
+
+  function crash() {
+    running = false;
+    particles = Array.from({ length: 16 }, () => ({
+      x: player.x + player.size / 2,
+      y: player.y + player.size / 2,
+      vx: Math.random() * 6 - 3,
+      vy: Math.random() * -6,
+      life: 32 + Math.random() * 18,
+    }));
+    setStatus(`Crashed at ${Math.floor(distance)}m`);
+    scheduleAutoReset(1100);
+    draw();
+  }
+
+  function updateHud() {
+    shell.hud.distance.textContent = `Distance ${Math.floor(distance)}m`;
+    shell.hud.mode.textContent = `${getDifficultyPreset().label} mode`;
+    shell.hud.level.textContent = `Level ${stageLevel}`;
+    refreshLevel();
+  }
+
+  function updateParticles() {
+    particles = particles
+      .map((particle) => ({
+        ...particle,
+        x: particle.x + particle.vx,
+        y: particle.y + particle.vy,
+        vy: particle.vy + 0.22,
+        life: particle.life - 1,
+      }))
+      .filter((particle) => particle.life > 0);
+  }
+
+  function update() {
+    const config = getConfig();
+    stageLevel = 1 + Math.floor(distance / 180);
+    const speed = config.speed + stageLevel * 0.16;
+
+    if (jumpQueued && player.grounded) {
+      player.vy = -config.jump;
+      player.grounded = false;
+      jumpQueued = false;
+    }
+    jumpQueued = false;
+
+    player.vy += config.gravity;
+    player.y += player.vy;
+    if (player.y >= floorY - player.size) {
+      player.y = floorY - player.size;
+      player.vy = 0;
+      player.grounded = true;
+      player.angle = 0;
+    } else {
+      player.angle += 0.16;
+    }
+
+    spawnTimer += 1;
+    if (spawnTimer >= Math.max(32, config.spawn - stageLevel * 2)) {
+      spawnTimer = 0;
+      spawnObstacle();
+    }
+
+    obstacles.forEach((obstacle) => {
+      obstacle.x -= obstacle.speed;
+    });
+    obstacles = obstacles.filter((obstacle) => obstacle.x + obstacle.width > -40);
+
+    const bounds = playerBounds();
+    const hit = obstacles.some((obstacle) => rectsOverlap(bounds, obstacleBounds(obstacle)));
+    if (hit) {
+      crash();
+      return;
+    }
+
+    distance += speed * 0.16;
+    setScore(Math.floor(distance));
+    updateHud();
+  }
+
+  function drawBackground() {
+    const gradient = ctx.createLinearGradient(0, 0, 0, 360);
+    gradient.addColorStop(0, "#112a4b");
+    gradient.addColorStop(1, "#08111f");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 860, 360);
+
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
+    for (let index = 0; index < 8; index += 1) {
+      const x = ((index * 140) - (distance * 0.5)) % 980;
+      ctx.fillRect(x, 120 + (index % 3) * 24, 76, 10);
+    }
+
+    ctx.fillStyle = "#153253";
+    ctx.fillRect(0, floorY, 860, 62);
+    ctx.fillStyle = "#46b1ff";
+    ctx.fillRect(0, floorY, 860, 8);
+  }
+
+  function drawObstacle(obstacle) {
+    const x = obstacle.x;
+    const y = floorY - obstacle.height;
+    if (obstacle.kind === "block") {
+      ctx.fillStyle = "#ff8a3d";
+      ctx.fillRect(x, y, obstacle.width, obstacle.height);
+      return;
+    }
+    ctx.fillStyle = obstacle.kind === "double" ? "#ffd166" : "#ff5f7a";
+    if (obstacle.kind === "double") {
+      for (let index = 0; index < 2; index += 1) {
+        const spikeX = x + index * 24;
+        ctx.beginPath();
+        ctx.moveTo(spikeX, floorY);
+        ctx.lineTo(spikeX + 12, y);
+        ctx.lineTo(spikeX + 24, floorY);
+        ctx.closePath();
+        ctx.fill();
+      }
+      return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x, floorY);
+    ctx.lineTo(x + obstacle.width / 2, y);
+    ctx.lineTo(x + obstacle.width, floorY);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawPlayer() {
+    ctx.save();
+    ctx.translate(player.x + player.size / 2, player.y + player.size / 2);
+    ctx.rotate(player.angle);
+    ctx.fillStyle = "#7af0c8";
+    ctx.fillRect(-player.size / 2, -player.size / 2, player.size, player.size);
+    ctx.fillStyle = "#08111f";
+    ctx.fillRect(-9, -6, 6, 6);
+    ctx.fillRect(3, -6, 6, 6);
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    particles.forEach((particle) => {
+      ctx.fillStyle = `rgba(255, 209, 102, ${Math.max(0.1, particle.life / 50)})`;
+      ctx.fillRect(particle.x, particle.y, 6, 6);
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, 860, 360);
+    drawBackground();
+    obstacles.forEach(drawObstacle);
+    drawPlayer();
+    drawParticles();
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.32)";
+      ctx.fillRect(0, 0, 860, 360);
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.font = "700 34px Trebuchet MS";
+      ctx.fillText("Cube Rush", 430, 150);
+      ctx.font = "22px Trebuchet MS";
+      ctx.fillText("Jump over spikes and survive the speed ramp", 430, 188);
+      ctx.fillText("Press Start, Space, Up, or click to jump", 430, 220);
+    }
+  }
+
+  function frame() {
+    if (!running) {
+      updateParticles();
+      draw();
+      if (particles.length) animationId = window.requestAnimationFrame(frame);
+      return;
+    }
+    animationId = window.requestAnimationFrame(frame);
+    update();
+    updateParticles();
+    draw();
+  }
+
+  return {
+    id: "dash",
+    title: "Cube Rush",
+    tagline: "Geometry Dash-style cube runner",
+    subtitle: "Auto-run, jump cleanly, and survive the spike course as the speed ramps up.",
+    description:
+      "A one-button cube runner inspired by rhythm obstacle platformers. The cube auto-moves, obstacles get tighter over distance, and clean jump timing is everything.",
+    controls: "Press Space, Up, W, or click the stage to jump.",
+    getLevelText: () => String(stageLevel),
+    mount(stage) {
+      shell = createCanvasShell({
+        hudItems: [
+          { id: "distance", label: "Distance 0m" },
+          { id: "mode", label: "Normal mode" },
+          { id: "level", label: "Level 1" },
+        ],
+      });
+      stage.innerHTML = "";
+      stage.appendChild(shell.wrap);
+      shell.canvas.width = 860;
+      shell.canvas.height = 360;
+      ctx = shell.canvas.getContext("2d");
+      shell.canvas.addEventListener("pointerdown", queueJump);
+      resetState();
+    },
+    start() {
+      if (running) return;
+      clearAutoReset();
+      running = true;
+      setStatus("Jump cleanly");
+      frame();
+    },
+    reset() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      resetState();
+      setStatus("Ready");
+    },
+    destroy() {
+      running = false;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+    },
+    onKeyDown(event) {
+      if ([" ", "ArrowUp", "w", "W"].includes(event.key)) {
+        queueJump();
+      }
     },
   };
 }

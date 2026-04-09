@@ -1,7 +1,8 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260407c";
+const BUILD_VERSION = "20260408a";
+const NEW_GAME_IDS = ["glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
     label: "Chill",
@@ -298,19 +299,27 @@ function bindEvents() {
 }
 
 function renderGameList() {
+  const renderGameButton = (game) => `
+    <button class="game-select ${game.id === appState.selectedGameId ? "active" : ""}" data-game-id="${game.id}">
+      <span class="game-select-topline">
+        <strong>${escapeHtml(game.title)}</strong>
+        ${NEW_GAME_IDS.includes(game.id) ? '<span class="game-badge">NEW</span>' : ""}
+      </span>
+      <span class="muted">${escapeHtml(game.tagline)}</span>
+    </button>
+  `;
+
+  const newGamesMarkup = NEW_GAME_IDS.map((id) => games[id])
+    .filter(Boolean)
+    .map((game) => renderGameButton(game))
+    .join("");
+
   const categorizedMarkup = GAME_CATEGORIES.map((group) => {
     const isCollapsed = Boolean(appState.collapsedCategories[group.label]);
     const buttons = group.ids
       .map((id) => games[id])
       .filter(Boolean)
-      .map(
-        (game) => `
-          <button class="game-select ${game.id === appState.selectedGameId ? "active" : ""}" data-game-id="${game.id}">
-            <strong>${escapeHtml(game.title)}</strong>
-            <span class="muted">${escapeHtml(game.tagline)}</span>
-          </button>
-        `,
-      )
+      .map((game) => renderGameButton(game))
       .join("");
 
     return `
@@ -328,17 +337,22 @@ function renderGameList() {
 
   const uncategorizedMarkup = Object.values(games)
     .filter((game) => !GAME_CATEGORIES.some((group) => group.ids.includes(game.id)))
-    .map(
-      (game) => `
-        <button class="game-select ${game.id === appState.selectedGameId ? "active" : ""}" data-game-id="${game.id}">
-          <strong>${escapeHtml(game.title)}</strong>
-          <span class="muted">${escapeHtml(game.tagline)}</span>
-        </button>
-      `,
-    )
+    .map((game) => renderGameButton(game))
     .join("");
 
   els.gameList.innerHTML =
+    (newGamesMarkup
+      ? `
+        <section class="game-category">
+          <div class="game-category-static">
+            <span class="game-category-label">New</span>
+          </div>
+          <div class="game-category-body">
+            ${newGamesMarkup}
+          </div>
+        </section>
+      `
+      : "") +
     categorizedMarkup +
     (uncategorizedMarkup
       ? `<section class="game-category"><p class="game-category-label">More</p>${uncategorizedMarkup}</section>`
@@ -843,45 +857,235 @@ function createBreakoutGame() {
   let shell;
   let ctx;
   let animationId = null;
+  let nextWaveTimeout = null;
   let running = false;
+  let paused = false;
+  let pendingNextWave = false;
   let leftPressed = false;
   let rightPressed = false;
   let paddle;
-  let ball;
-  let bricks;
-  let lives;
+  let balls = [];
+  let bricks = [];
+  let lives = 0;
+  let wave = 1;
+  let credits = 0;
+  let upgrades;
+  let visibilityHandler = null;
+  let blurHandler = null;
 
-  function resetState() {
-    const preset = getDifficultyPreset();
-    paddle = { x: 330, y: 400, width: preset.breakoutPaddleWidth, height: 14 };
-    ball = {
-      x: 380,
-      y: 260,
-      vx: preset.breakoutBallSpeed,
-      vy: -preset.breakoutBallSpeed,
-      r: 9,
+  function updatePauseButton() {
+    const button = shell?.wrap?.querySelector("[data-breakout-pause]");
+    if (!button) return;
+    button.textContent = paused ? "Resume" : "Pause";
+  }
+
+  function makeUpgradeState() {
+    return {
+      paddle: 0,
+      power: 0,
+      fireball: 0,
+      multiball: 0,
     };
-    lives = preset.breakoutLives;
-    bricks = [];
-    for (let row = 0; row < 5; row += 1) {
-      for (let col = 0; col < 9; col += 1) {
-        bricks.push({
-          x: 40 + col * 78,
-          y: 40 + row * 30,
-          width: 66,
-          height: 18,
+  }
+
+  function clearTimers() {
+    if (animationId) cancelAnimationFrame(animationId);
+    animationId = null;
+    if (nextWaveTimeout) clearTimeout(nextWaveTimeout);
+    nextWaveTimeout = null;
+  }
+
+  function getBallSpeed() {
+    const preset = getDifficultyPreset();
+    return preset.breakoutBallSpeed + Math.min(2.2, wave * 0.08);
+  }
+
+  function getPaddleWidth() {
+    const preset = getDifficultyPreset();
+    return Math.min(220, preset.breakoutPaddleWidth + upgrades.paddle * 18);
+  }
+
+  function spawnBall(angleOffset = 0) {
+    const speed = getBallSpeed();
+    const angle = (-Math.PI / 2) + angleOffset;
+    return {
+      x: paddle.x + paddle.width / 2,
+      y: paddle.y - 18,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: 9,
+      fireHits: upgrades.fireball,
+    };
+  }
+
+  function replenishBalls(count = 1) {
+    balls = Array.from({ length: count }, (_, index) => spawnBall((index - (count - 1) / 2) * 0.22));
+  }
+
+  function buildWaveLayout(nextWave) {
+    const rows = Math.min(9, 4 + Math.floor(nextWave / 2));
+    const cols = 9;
+    const width = 66;
+    const height = 18;
+    const gapX = 12;
+    const gapY = 12;
+    const startX = 40;
+    const startY = 40;
+    const wall = [];
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const baseHp = 1 + Math.floor((nextWave - 1) / 2);
+        const extraHp = Math.random() < Math.min(0.55, nextWave * 0.08) ? 1 : 0;
+        wall.push({
+          x: startX + col * (width + gapX),
+          y: startY + row * (height + gapY),
+          width,
+          height,
+          hp: baseHp + extraHp,
+          maxHp: baseHp + extraHp,
           alive: true,
         });
       }
     }
-    setScore(0);
-    updateHud();
-    draw();
+    return wall;
   }
 
   function updateHud() {
     shell.hud.lives.textContent = `Lives ${lives}`;
-    shell.hud.bricks.textContent = `Bricks ${bricks.filter((brick) => brick.alive).length}`;
+    shell.hud.wave.textContent = `Wave ${wave}`;
+    shell.hud.credits.textContent = `Credits ${credits}`;
+    refreshLevel();
+  }
+
+  function renderUpgradeBar() {
+    const container = shell.wrap.querySelector("[data-breakout-upgrades]");
+    if (!container) return;
+    const costs = {
+      paddle: 8 + upgrades.paddle * 6,
+      power: 12 + upgrades.power * 8,
+      fireball: 16 + upgrades.fireball * 10,
+      multiball: 18 + upgrades.multiball * 12,
+      life: 14 + Math.max(0, lives - getDifficultyPreset().breakoutLives) * 8,
+    };
+    container.innerHTML = `
+      <button class="mini-button" data-upgrade="paddle">Wide Paddle ${costs.paddle}</button>
+      <button class="mini-button" data-upgrade="power">Power Ball ${costs.power}</button>
+      <button class="mini-button" data-upgrade="fireball">Fireball ${costs.fireball}</button>
+      <button class="mini-button" data-upgrade="multiball">Multiball ${costs.multiball}</button>
+      <button class="mini-button" data-upgrade="life">Extra Life ${costs.life}</button>
+    `;
+    container.querySelectorAll("[data-upgrade]").forEach((button) => {
+      button.addEventListener("click", () => buyUpgrade(button.dataset.upgrade, costs[button.dataset.upgrade]));
+    });
+    updatePauseButton();
+  }
+
+  function resetPaddle() {
+    paddle = {
+      x: 380 - getPaddleWidth() / 2,
+      y: 400,
+      width: getPaddleWidth(),
+      height: 14,
+    };
+  }
+
+  function prepareWave(nextWave, preserveRun = false) {
+    wave = nextWave;
+    resetPaddle();
+    bricks = buildWaveLayout(wave);
+    replenishBalls(1 + Math.min(2, upgrades.multiball));
+    if (!preserveRun) {
+      setScore(0);
+      credits = 0;
+      upgrades = makeUpgradeState();
+      lives = getDifficultyPreset().breakoutLives;
+      resetPaddle();
+      bricks = buildWaveLayout(1);
+      wave = 1;
+      replenishBalls(1);
+    }
+    updateHud();
+    renderUpgradeBar();
+    draw();
+  }
+
+  function resetState() {
+    upgrades = makeUpgradeState();
+    wave = 1;
+    credits = 0;
+    lives = getDifficultyPreset().breakoutLives;
+    paused = false;
+    pendingNextWave = false;
+    prepareWave(1, true);
+    setScore(0);
+  }
+
+  function buyUpgrade(type, cost) {
+    if (credits < cost) {
+      setStatus("Not enough credits");
+      return;
+    }
+    credits -= cost;
+    if (type === "paddle") {
+      upgrades.paddle += 1;
+      const center = paddle.x + paddle.width / 2;
+      paddle.width = getPaddleWidth();
+      paddle.x = clamp(center - paddle.width / 2, 0, 760 - paddle.width);
+      setStatus("Paddle widened");
+    } else if (type === "power") {
+      upgrades.power += 1;
+      setStatus("Power Ball upgraded");
+    } else if (type === "fireball") {
+      upgrades.fireball += 1;
+      balls.forEach((ball) => {
+        ball.fireHits = Math.max(ball.fireHits, upgrades.fireball);
+      });
+      setStatus("Fireball upgraded");
+    } else if (type === "multiball") {
+      upgrades.multiball += 1;
+      if (balls.length < 4) {
+        balls.push(spawnBall((Math.random() - 0.5) * 0.6));
+      }
+      setStatus("Multiball online");
+    } else if (type === "life") {
+      lives += 1;
+      setStatus("Extra life gained");
+    }
+    updateHud();
+    renderUpgradeBar();
+    draw();
+  }
+
+  function queueNextWave() {
+    running = false;
+    pendingNextWave = true;
+    clearTimers();
+    setStatus(`Wave ${wave} cleared`);
+    nextWaveTimeout = window.setTimeout(() => {
+      nextWaveTimeout = null;
+      pendingNextWave = false;
+      prepareWave(wave + 1, true);
+      running = true;
+      paused = false;
+      setStatus(`Wave ${wave}`);
+      loop();
+    }, 900);
+  }
+
+  function loseBall() {
+    if (balls.length) return;
+    lives -= 1;
+    updateHud();
+    renderUpgradeBar();
+    if (lives <= 0) {
+      running = false;
+      paused = false;
+      setStatus(`Out of lives - ${appState.score}`);
+      scheduleAutoReset();
+      return;
+    }
+    replenishBalls(1 + Math.min(2, upgrades.multiball));
+    setStatus("Ball returned");
   }
 
   function loop() {
@@ -891,66 +1095,83 @@ function createBreakoutGame() {
     draw();
   }
 
+  function hitBrick(ball, brick) {
+    brick.hp -= 1 + upgrades.power;
+    credits += brick.hp <= 0 ? brick.maxHp + Math.max(1, Math.floor(wave / 2)) : 1;
+    if (brick.hp <= 0) {
+      brick.alive = false;
+      setScore(appState.score + brick.maxHp * 12);
+    } else {
+      setScore(appState.score + 4);
+    }
+    if (ball.fireHits > 0) {
+      ball.fireHits -= 1;
+    } else {
+      ball.vy *= -1;
+    }
+    updateHud();
+    renderUpgradeBar();
+  }
+
   function update() {
-    if (leftPressed) paddle.x -= 7;
-    if (rightPressed) paddle.x += 7;
+    const paddleSpeed = 7.2 + upgrades.paddle * 0.25;
+    if (leftPressed) paddle.x -= paddleSpeed;
+    if (rightPressed) paddle.x += paddleSpeed;
     paddle.x = clamp(paddle.x, 0, 760 - paddle.width);
 
-    ball.x += ball.vx;
-    ball.y += ball.vy;
+    balls = balls.filter((ball) => {
+      ball.x += ball.vx;
+      ball.y += ball.vy;
 
-    if (ball.x - ball.r <= 0 || ball.x + ball.r >= 760) ball.vx *= -1;
-    if (ball.y - ball.r <= 0) ball.vy *= -1;
+      if (ball.x - ball.r <= 0 || ball.x + ball.r >= 760) ball.vx *= -1;
+      if (ball.y - ball.r <= 0) ball.vy *= -1;
 
-    if (
-      ball.y + ball.r >= paddle.y &&
-      ball.x >= paddle.x &&
-      ball.x <= paddle.x + paddle.width &&
-      ball.vy > 0
-    ) {
-      const hit = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
-      ball.vx = hit * 6;
-      ball.vy = -Math.abs(ball.vy);
-    }
-
-    for (const brick of bricks) {
-      if (!brick.alive) continue;
       if (
-        ball.x + ball.r >= brick.x &&
-        ball.x - ball.r <= brick.x + brick.width &&
-        ball.y + ball.r >= brick.y &&
-        ball.y - ball.r <= brick.y + brick.height
+        ball.y + ball.r >= paddle.y &&
+        ball.x >= paddle.x &&
+        ball.x <= paddle.x + paddle.width &&
+        ball.vy > 0
       ) {
-        brick.alive = false;
-        ball.vy *= -1;
-        setScore(appState.score + 10);
-        updateHud();
-        break;
+        const hit = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+        ball.vx = hit * (6.2 + upgrades.power * 0.18);
+        ball.vy = -Math.abs(ball.vy);
+        ball.fireHits = upgrades.fireball;
       }
-    }
+
+      for (const brick of bricks) {
+        if (!brick.alive) continue;
+        if (
+          ball.x + ball.r >= brick.x &&
+          ball.x - ball.r <= brick.x + brick.width &&
+          ball.y + ball.r >= brick.y &&
+          ball.y - ball.r <= brick.y + brick.height
+        ) {
+          hitBrick(ball, brick);
+          break;
+        }
+      }
+
+      return ball.y - ball.r <= 440;
+    });
 
     if (!bricks.some((brick) => brick.alive)) {
-      running = false;
-      setStatus(`You win - ${appState.score}`);
+      queueNextWave();
+      return;
     }
 
-    if (ball.y - ball.r > 440) {
-      lives -= 1;
-      updateHud();
-      if (lives <= 0) {
-        running = false;
-        setStatus(`Out of lives - ${appState.score}`);
-        scheduleAutoReset();
-      } else {
-        const preset = getDifficultyPreset();
-        ball = {
-          x: 380,
-          y: 260,
-          vx: preset.breakoutBallSpeed,
-          vy: -preset.breakoutBallSpeed,
-          r: 9,
-        };
-      }
+    loseBall();
+  }
+
+  function drawBrick(brick, index) {
+    const palette = ["#46b1ff", "#6ed8ff", "#8f66ff", "#ff8a3d", "#ffd166", "#ff5f7a"];
+    const color = palette[Math.min(palette.length - 1, brick.maxHp - 1)] || palette[index % palette.length];
+    ctx.fillStyle = color;
+    ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+    if (brick.maxHp > 1) {
+      ctx.fillStyle = "rgba(8,17,31,0.9)";
+      ctx.font = "700 12px Trebuchet MS";
+      ctx.textAlign = "center";
+      ctx.fillText(String(Math.max(1, brick.hp)), brick.x + brick.width / 2, brick.y + 13);
     }
   }
 
@@ -961,18 +1182,18 @@ function createBreakoutGame() {
 
     bricks.forEach((brick, index) => {
       if (!brick.alive) return;
-      const colors = ["#46b1ff", "#6ed8ff", "#8f66ff", "#ff8a3d", "#ffd166"];
-      ctx.fillStyle = colors[index % colors.length];
-      ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+      drawBrick(brick, index);
     });
 
     ctx.fillStyle = "#f4f6fa";
     ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
 
-    ctx.fillStyle = "#ff8a3d";
-    ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-    ctx.fill();
+    balls.forEach((ball) => {
+      ctx.fillStyle = ball.fireHits > 0 ? "#ffd166" : "#ff8a3d";
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
 
     if (!running) {
       ctx.fillStyle = "rgba(0,0,0,0.36)";
@@ -980,46 +1201,128 @@ function createBreakoutGame() {
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
       ctx.font = "700 34px Trebuchet MS";
-      ctx.fillText("Brick Burst", 380, 210);
+      ctx.fillText(paused ? "Paused" : "Brick Burst Infinite", 380, 205);
       ctx.font = "22px Trebuchet MS";
-      ctx.fillText("Press Start to launch", 380, 250);
+      ctx.fillText(`Wave ${wave} | Credits ${credits}`, 380, 240);
+      ctx.fillText(paused ? "Press Resume or Start to continue" : "Press Start to launch the next run", 380, 274);
+    }
+  }
+
+  function pauseGame(reason = "Paused") {
+    if ((!running && !pendingNextWave) || paused) return;
+    paused = true;
+    running = false;
+    if (pendingNextWave && nextWaveTimeout) {
+      clearTimeout(nextWaveTimeout);
+      nextWaveTimeout = null;
+    }
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    leftPressed = false;
+    rightPressed = false;
+    updatePauseButton();
+    setStatus(reason);
+    draw();
+  }
+
+  function resumeGame() {
+    if (!paused) return;
+    paused = false;
+    updatePauseButton();
+    if (pendingNextWave) {
+      pendingNextWave = false;
+      prepareWave(wave + 1, true);
+    }
+    running = true;
+    clearAutoReset();
+    setStatus(`Wave ${wave}`);
+    loop();
+  }
+
+  function attachPauseListeners() {
+    if (visibilityHandler || blurHandler) return;
+    visibilityHandler = () => {
+      if (document.hidden) {
+        pauseGame("Auto-paused");
+      }
+    };
+    blurHandler = () => {
+      pauseGame("Auto-paused");
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
+    window.addEventListener("blur", blurHandler);
+  }
+
+  function detachPauseListeners() {
+    if (visibilityHandler) {
+      document.removeEventListener("visibilitychange", visibilityHandler);
+      visibilityHandler = null;
+    }
+    if (blurHandler) {
+      window.removeEventListener("blur", blurHandler);
+      blurHandler = null;
     }
   }
 
   return {
     id: "breakout",
-    levelStep: 60,
+    getLevelText: () => String(wave),
     title: "Brick Burst",
-    tagline: "Breakout-inspired brick smashing",
-    subtitle: "Bounce the ball, clear the wall, and hang onto your last life.",
+    tagline: "Infinite brick breaker with upgrades",
+    subtitle: "Keep clearing tougher waves, buy upgrades, and see how long the run can last.",
     description:
-      "A bright breakout-style arcade game with a controllable paddle, layered brick rows, and a score chase.",
-    controls: "Left and right arrows or A and D.",
+      "An endless-style brick breaker run with wave scaling, credits, and upgrade buttons for paddle size, power, fireball hits, multiball, and extra lives.",
+    controls: "Left and right arrows or A and D. Buy upgrades with the buttons under the arena.",
     mount(stage) {
       stage.innerHTML = "";
       shell = createCanvasShell({
         hudItems: [
           { id: "lives", label: "Lives 3" },
-          { id: "bricks", label: "Bricks 45" },
+          { id: "wave", label: "Wave 1" },
+          { id: "credits", label: "Credits 0" },
         ],
       });
+      shell.wrap.insertAdjacentHTML(
+        "beforeend",
+        '<div class="action-button-grid"><button class="mini-button" data-breakout-pause>Pause</button></div><div class="action-button-grid" data-breakout-upgrades></div>',
+      );
       stage.appendChild(shell.wrap);
       shell.canvas.width = 760;
       shell.canvas.height = 440;
       ctx = shell.canvas.getContext("2d");
+      shell.wrap.querySelector("[data-breakout-pause]")?.addEventListener("click", () => {
+        if (paused) {
+          resumeGame();
+        } else {
+          pauseGame("Paused");
+        }
+      });
+      attachPauseListeners();
       resetState();
     },
     start() {
+      if (paused) {
+        resumeGame();
+        return;
+      }
       if (running) return;
+      clearAutoReset();
+      pendingNextWave = false;
+      paused = false;
+      updatePauseButton();
       running = true;
-      setStatus("Playing");
+      setStatus(`Wave ${wave}`);
       loop();
     },
     reset() {
       running = false;
-      if (animationId) cancelAnimationFrame(animationId);
-      animationId = null;
+      paused = false;
+      pendingNextWave = false;
+      clearTimers();
       resetState();
+      updatePauseButton();
       setStatus("Ready");
     },
     onKeyDown(event) {
@@ -1032,7 +1335,10 @@ function createBreakoutGame() {
     },
     destroy() {
       running = false;
-      if (animationId) cancelAnimationFrame(animationId);
+      paused = false;
+      pendingNextWave = false;
+      clearTimers();
+      detachPauseListeners();
       leftPressed = false;
       rightPressed = false;
     },
@@ -4390,7 +4696,7 @@ function createMergeGame() {
     animationTimer = window.setTimeout(() => {
       animationTimer = null;
       onDone();
-    }, 170);
+    }, 230);
   }
 
   function slideRowLeft(row) {
@@ -4425,11 +4731,16 @@ function createMergeGame() {
     return matrix[0].map((_, columnIndex) => matrix.map((row) => row[columnIndex]));
   }
 
-  function mapMotion(direction, from, to, lineIndex) {
-    if (direction === "left") return { fromRow: lineIndex, fromCol: from, toRow: lineIndex, toCol: to };
-    if (direction === "right") return { fromRow: lineIndex, fromCol: 3 - from, toRow: lineIndex, toCol: 3 - to };
-    if (direction === "up") return { fromRow: from, fromCol: lineIndex, toRow: to, toCol: lineIndex };
-    return { fromRow: 3 - from, fromCol: lineIndex, toRow: 3 - to, toCol: lineIndex };
+  function mapMotion(direction, motion, lineIndex) {
+    const mapped =
+      direction === "left"
+        ? { fromRow: lineIndex, fromCol: motion.from, toRow: lineIndex, toCol: motion.to }
+        : direction === "right"
+          ? { fromRow: lineIndex, fromCol: 3 - motion.from, toRow: lineIndex, toCol: 3 - motion.to }
+          : direction === "up"
+            ? { fromRow: motion.from, fromCol: lineIndex, toRow: motion.to, toCol: lineIndex }
+            : { fromRow: 3 - motion.from, fromCol: lineIndex, toRow: 3 - motion.to, toCol: lineIndex };
+    return { ...mapped, value: motion.value };
   }
 
   function performMove(direction) {
@@ -4452,7 +4763,7 @@ function createMergeGame() {
       const next = result.row;
       if (next.some((value, index) => value !== row[index])) moved = true;
       gained += result.gained;
-      motions = motions.concat(result.motions.map((motion) => mapMotion(direction, motion.from, motion.to, lineIndex)));
+      motions = motions.concat(result.motions.map((motion) => mapMotion(direction, motion, lineIndex)));
       return next;
     });
 
@@ -14351,6 +14662,7 @@ function createGlowGridGame() {
   let stageLevel = 1;
   let hits = 0;
   let misses = 0;
+  let combo = 0;
   let cells = [];
   let spawnIntervalId = null;
 
@@ -14374,7 +14686,7 @@ function createGlowGridGame() {
 
   function updateHud() {
     const config = getConfig();
-    metaEl.textContent = `Stage ${stageLevel} | Hits ${hits}/${config.target + Math.floor((stageLevel - 1) * 2)} | Misses ${misses}/${config.maxMisses}`;
+    metaEl.textContent = `Stage ${stageLevel} | Hits ${hits}/${config.target + Math.floor((stageLevel - 1) * 2)} | Misses ${misses}/${config.maxMisses} | Combo ${combo}`;
     refreshLevel();
   }
 
@@ -14390,9 +14702,19 @@ function createGlowGridGame() {
       button.style.minHeight = "62px";
       button.style.borderRadius = "18px";
       button.style.border = "1px solid rgba(255,255,255,0.08)";
-      button.style.background = cell.active ? "linear-gradient(135deg, rgba(242, 156, 74, 0.9), rgba(255, 219, 117, 0.9))" : "rgba(255,255,255,0.05)";
-      button.style.boxShadow = cell.active ? "0 0 24px rgba(255, 197, 90, 0.45)" : "none";
-      button.textContent = cell.active ? "POP" : "";
+      if (cell.active && cell.type === "burst") {
+        button.style.background = "linear-gradient(135deg, rgba(255, 103, 80, 0.92), rgba(255, 196, 88, 0.92))";
+        button.style.boxShadow = "0 0 24px rgba(255, 132, 90, 0.45)";
+        button.textContent = "BURST";
+      } else if (cell.active && cell.type === "save") {
+        button.style.background = "linear-gradient(135deg, rgba(95, 214, 157, 0.92), rgba(91, 214, 224, 0.92))";
+        button.style.boxShadow = "0 0 24px rgba(91, 214, 224, 0.35)";
+        button.textContent = "SAVE";
+      } else {
+        button.style.background = cell.active ? "linear-gradient(135deg, rgba(242, 156, 74, 0.9), rgba(255, 219, 117, 0.9))" : "rgba(255,255,255,0.05)";
+        button.style.boxShadow = cell.active ? "0 0 24px rgba(255, 197, 90, 0.45)" : "none";
+        button.textContent = cell.active ? "POP" : "";
+      }
       button.addEventListener("click", () => tapCell(index));
       gridEl.appendChild(button);
       cell.button = button;
@@ -14406,7 +14728,9 @@ function createGlowGridGame() {
     if (cell.timeoutId) clearTimeout(cell.timeoutId);
     cell.timeoutId = null;
     cell.active = false;
+    cell.type = "normal";
     if (expired && running) {
+      combo = 0;
       misses += 1;
       if (misses >= getConfig().maxMisses) {
         running = false;
@@ -14424,6 +14748,8 @@ function createGlowGridGame() {
     const config = getConfig();
     const cell = cells[index];
     cell.active = true;
+    const roll = Math.random();
+    cell.type = roll < 0.16 ? "burst" : roll < 0.3 ? "save" : "normal";
     cell.timeoutId = window.setTimeout(() => deactivateCell(index, true), Math.max(480, config.lifeMs - stageLevel * 24));
   }
 
@@ -14446,6 +14772,20 @@ function createGlowGridGame() {
     return getConfig().target + Math.floor((stageLevel - 1) * 2);
   }
 
+  function getNeighbors(index) {
+    const size = getConfig().size;
+    const row = Math.floor(index / size);
+    const col = index % size;
+    return [
+      [row - 1, col],
+      [row + 1, col],
+      [row, col - 1],
+      [row, col + 1],
+    ]
+      .filter(([nextRow, nextCol]) => nextRow >= 0 && nextCol >= 0 && nextRow < size && nextCol < size)
+      .map(([nextRow, nextCol]) => nextRow * size + nextCol);
+  }
+
   function tapCell(index) {
     if (!running) return;
     const cell = cells[index];
@@ -14453,9 +14793,28 @@ function createGlowGridGame() {
       setStatus("Hit the glowing cells");
       return;
     }
+    const tappedType = cell.type;
     deactivateCell(index, false);
+    combo += 1;
     hits += 1;
-    setScore(appState.score + stageLevel * 8);
+    let scoreGain = stageLevel * (8 + Math.min(5, combo));
+    if (tappedType === "save") {
+      misses = Math.max(0, misses - 1);
+      scoreGain += stageLevel * 10;
+      setStatus("Saved the grid");
+    } else if (tappedType === "burst") {
+      let burstHits = 0;
+      getNeighbors(index).forEach((neighborIndex) => {
+        if (cells[neighborIndex]?.active) {
+          deactivateCell(neighborIndex, false);
+          burstHits += 1;
+        }
+      });
+      hits += burstHits;
+      scoreGain += burstHits * stageLevel * 12;
+      setStatus(`Burst chain x${burstHits + 1}`);
+    }
+    setScore(appState.score + scoreGain);
     if (hits >= targetHits()) {
       running = false;
       clearActivity();
@@ -14471,8 +14830,9 @@ function createGlowGridGame() {
     stageLevel = level;
     hits = 0;
     misses = 0;
+    combo = 0;
     clearActivity();
-    cells = Array.from({ length: config.size * config.size }, () => ({ active: false, timeoutId: null, button: null }));
+    cells = Array.from({ length: config.size * config.size }, () => ({ active: false, timeoutId: null, button: null, type: "normal" }));
     if (!preserveScore) setScore(0);
     running = false;
     renderGrid();
@@ -14483,8 +14843,8 @@ function createGlowGridGame() {
     title: "Glow Grid",
     tagline: "Click before it fades",
     subtitle: "Pop the bright tiles before they blink out and the misses pile up.",
-    description: "A fast reaction game where glowing tiles appear all over the grid. Click enough of them before too many fade away to advance.",
-    controls: "Click the glowing tiles before they expire.",
+    description: "A fast reaction game where special burst and save tiles appear alongside normal pops. Chain hits together, trigger bursts, and stop misses from piling up.",
+    controls: "Click glowing tiles. BURST clears nearby glows and SAVE reduces misses.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
       stage.innerHTML = "";
@@ -15250,6 +15610,7 @@ function createPatternPanicGame() {
   let sequence = [];
   let index = 0;
   let timeLeft = 0;
+  let rule = "forward";
   const symbols = ["←", "↑", "→", "↓"];
   const keyMap = {
     ArrowLeft: "←",
@@ -15276,10 +15637,34 @@ function createPatternPanicGame() {
   }
 
   function updateHud() {
-    metaEl.textContent = `Stage ${stageLevel} | Input ${index}/${sequence.length} | Time ${timeLeft.toFixed(1)}s`;
+    metaEl.textContent = `Stage ${stageLevel} | Rule ${ruleLabel()} | Input ${index}/${sequence.length} | Time ${timeLeft.toFixed(1)}s`;
     if (progressEl) progressEl.textContent = sequence.map((symbol, symbolIndex) => (symbolIndex < index ? "✓" : symbol)).join(" ");
     if (timerEl) timerEl.textContent = `${timeLeft.toFixed(1)}s`;
     refreshLevel();
+  }
+
+  function ruleLabel() {
+    if (rule === "reverse") return "Reverse";
+    if (rule === "mirror") return "Mirror";
+    return "Forward";
+  }
+
+  function mirrorSymbol(symbol) {
+    if (symbol === "←") return "→";
+    if (symbol === "→") return "←";
+    if (symbol === "↑") return "↓";
+    if (symbol === "↓") return "↑";
+    return symbol;
+  }
+
+  function expectedSequence() {
+    if (rule === "reverse") {
+      return [...sequence].reverse();
+    }
+    if (rule === "mirror") {
+      return sequence.map((symbol) => mirrorSymbol(symbol));
+    }
+    return sequence;
   }
 
   function renderSequence() {
@@ -15292,6 +15677,9 @@ function createPatternPanicGame() {
     const config = getConfig();
     stageLevel = level;
     sequence = Array.from({ length: config.length + Math.floor((stageLevel - 1) / 2) }, () => symbols[Math.floor(Math.random() * symbols.length)]);
+    if (stageLevel >= 7) rule = "mirror";
+    else if (stageLevel >= 4) rule = "reverse";
+    else rule = "forward";
     index = 0;
     timeLeft = Math.max(2.5, config.time - stageLevel * 0.08 + sequence.length * 0.18);
     running = false;
@@ -15317,7 +15705,8 @@ function createPatternPanicGame() {
 
   function input(symbol) {
     if (!running) return;
-    if (sequence[index] !== symbol) {
+    const expected = expectedSequence();
+    if (expected[index] !== symbol) {
       fail("Wrong input");
       return;
     }
@@ -15343,8 +15732,8 @@ function createPatternPanicGame() {
     id: "panic",
     title: "Pattern Panic",
     tagline: "Hit the arrow chain",
-    subtitle: "Burn through the arrow pattern before the clock runs out.",
-    description: "A twitchy arrow-input game. Read the displayed pattern and punch it in before the timer empties.",
+    subtitle: "Burn through the arrow pattern, then survive the reverse and mirror rule shifts.",
+    description: "A twitchy arrow-input game with rule changes as you climb. Early stages are straight, then the sequence flips backward and later mirrors into the opposite directions.",
     controls: "Use arrow keys or WASD, or click the arrow buttons.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
@@ -15353,7 +15742,7 @@ function createPatternPanicGame() {
         <div class="stack-layout">
           <div class="game-meta">
             <strong>Pattern Panic</strong>
-            <span class="muted" data-meta>Stage 1 | Input 0/0 | Time 0.0s</span>
+            <span class="muted" data-meta>Stage 1 | Rule Forward | Input 0/0 | Time 0.0s</span>
           </div>
           <div style="display:grid; gap:14px; border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:20px; background:rgba(255,255,255,0.04);">
             <div class="info-chip-row">

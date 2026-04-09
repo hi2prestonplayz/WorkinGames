@@ -123,6 +123,15 @@ select {
   gap: 8px;
 }
 
+.game-category-static {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(255, 138, 61, 0.16), rgba(75, 188, 255, 0.12));
+}
+
 .game-category-toggle {
   width: 100%;
   display: flex;
@@ -450,11 +459,20 @@ select {
 .game-select {
   width: 100%;
   text-align: left;
+  display: grid;
+  gap: 6px;
   padding: 14px 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.04);
   color: var(--ink);
   border: 1px solid transparent;
+}
+
+.game-select-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
 }
 
 .game-select:hover {
@@ -469,7 +487,19 @@ select {
 
 .game-select strong {
   display: block;
-  margin-bottom: 4px;
+}
+
+.game-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 138, 61, 0.95), rgba(255, 201, 84, 0.95));
+  color: #08111f;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
 }
 
 .stats-grid {
@@ -697,7 +727,7 @@ select {
 }
 
 .merge-moving {
-  transition: transform 0.16s ease;
+  transition: transform 0.22s ease;
 }
 
 .merge-0 {

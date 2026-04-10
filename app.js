@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260410e";
+const BUILD_VERSION = "20260410f";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -16555,6 +16555,36 @@ function createDashCubeGame() {
       note: "The hardest fixed route with speed, gravity, ship, mini, and saw pressure.",
       sequence: ["padDuo", "sawPad", "miniMix", "gravityFlip", "shipSprint", "speedCube", "gravityFlip", "miniMix", "shipSprint", "tripleRise"],
     },
+    relay: {
+      id: "relay",
+      label: "Ring Relay",
+      note: "An orb-heavy route with chained pink and yellow ring timing.",
+      sequence: ["padDuo", "ringLadder", "blockOrb", "ringLadder", "sawPad", "ringLadder", "tripleRise"],
+    },
+    skylab: {
+      id: "skylab",
+      label: "Ship Lab",
+      note: "Longer ship control sections with tighter saw spacing and recovery portals.",
+      sequence: ["padDuo", "shipTunnel", "doublePair", "shipSprint", "shipTunnel", "speedCube"],
+    },
+    flux: {
+      id: "flux",
+      label: "Gravity Flux",
+      note: "Repeated gravity swaps with mixed floor and ceiling reads.",
+      sequence: ["padDuo", "gravitySteps", "roofWeave", "gravityFlip", "gravitySteps", "doublePair", "tripleRise"],
+    },
+    resize: {
+      id: "resize",
+      label: "Size Shift",
+      note: "Mini and maxi swaps chained with rings, saws, and block jumps.",
+      sequence: ["padDuo", "miniMix", "sizeWeave", "blockOrb", "sizeWeave", "sawPad", "tripleRise"],
+    },
+    velocity: {
+      id: "velocity",
+      label: "Velocity Vortex",
+      note: "Speed-change sections that keep shifting tempo mid-pattern.",
+      sequence: ["padDuo", "speedBridge", "doublePair", "speedCube", "speedBridge", "shipSprint", "tripleRise"],
+    },
   };
 
   function getSelectedCourse() {
@@ -16684,6 +16714,65 @@ function createDashCubeGame() {
         { kind: "orbPink", x: startX + 162, y: floorY - 96, width: 24, height: 24, speed, used: false },
         { kind: "orb", x: startX + 190, y: floorY - 132, width: 26, height: 26, speed, used: false },
         { kind: "spike", x: startX + 236, width: 34, height: 34, speed },
+      ];
+    }
+    if (type === "ringLadder") {
+      return [
+        { kind: "block", x: startX, width: 54, height: 46, speed },
+        { kind: "orb", x: startX + 78, y: floorY - 118, width: 26, height: 26, speed, used: false },
+        { kind: "orbPink", x: startX + 116, y: floorY - 154, width: 24, height: 24, speed, used: false },
+        { kind: "coin", x: startX + 154, y: floorY - 194, width: 22, height: 22, speed, taken: false },
+        { kind: "saw", x: startX + 196, y: floorY - 104, width: 34, height: 34, speed },
+        { kind: "double", x: startX + 244, width: 54, height: 34, speed },
+      ];
+    }
+    if (type === "shipTunnel") {
+      return [
+        { kind: "portalShip", x: startX, width: 30, height: 96, speed },
+        { kind: "roof", x: startX + 62, width: 38, height: 30, speed },
+        { kind: "saw", x: startX + 108, y: floorY - 90, width: 34, height: 34, speed },
+        { kind: "roof", x: startX + 164, width: 38, height: 30, speed },
+        { kind: "coin", x: startX + 198, y: floorY - 202, width: 22, height: 22, speed, taken: false },
+        { kind: "saw", x: startX + 238, y: floorY - 168, width: 38, height: 38, speed },
+        { kind: "roof", x: startX + 294, width: 38, height: 30, speed },
+        { kind: "portalCube", x: startX + 352, width: 30, height: 96, speed },
+        { kind: "double", x: startX + 414, width: 54, height: 34, speed },
+      ];
+    }
+    if (type === "gravitySteps") {
+      return [
+        { kind: "portalGravityUp", x: startX, width: 30, height: 96, speed },
+        { kind: "roof", x: startX + 54, width: 38, height: 30, speed },
+        { kind: "orbPink", x: startX + 104, y: 102, width: 24, height: 24, speed, used: false },
+        { kind: "coin", x: startX + 144, y: 86, width: 22, height: 22, speed, taken: false },
+        { kind: "roof", x: startX + 188, width: 38, height: 30, speed },
+        { kind: "portalGravityDown", x: startX + 246, width: 30, height: 96, speed },
+        { kind: "double", x: startX + 304, width: 54, height: 34, speed },
+        { kind: "saw", x: startX + 376, y: floorY - 82, width: 32, height: 32, speed },
+      ];
+    }
+    if (type === "sizeWeave") {
+      return [
+        { kind: "portalMini", x: startX, width: 28, height: 92, speed },
+        { kind: "double", x: startX + 62, width: 54, height: 34, speed },
+        { kind: "orbPink", x: startX + 110, y: floorY - 92, width: 24, height: 24, speed, used: false },
+        { kind: "saw", x: startX + 152, y: floorY - 88, width: 34, height: 34, speed },
+        { kind: "portalMaxi", x: startX + 208, width: 28, height: 92, speed },
+        { kind: "block", x: startX + 262, width: 58, height: 52, speed },
+        { kind: "coin", x: startX + 338, y: floorY - 168, width: 22, height: 22, speed, taken: false },
+        { kind: "triple", x: startX + 372, width: 80, height: 34, speed },
+      ];
+    }
+    if (type === "speedBridge") {
+      return [
+        { kind: "portalSpeedUp", x: startX, width: 28, height: 92, speed },
+        { kind: "pad", x: startX + 42, width: 36, height: 12, speed, used: false },
+        { kind: "double", x: startX + 102, width: 54, height: 34, speed },
+        { kind: "orb", x: startX + 172, y: floorY - 124, width: 26, height: 26, speed, used: false },
+        { kind: "saw", x: startX + 218, y: floorY - 90, width: 34, height: 34, speed },
+        { kind: "coin", x: startX + 254, y: floorY - 176, width: 22, height: 22, speed, taken: false },
+        { kind: "portalSpeedDown", x: startX + 296, width: 28, height: 92, speed },
+        { kind: "block", x: startX + 352, width: 56, height: 46, speed },
       ];
     }
     if (type === "padDuo") {

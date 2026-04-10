@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260409a";
+const BUILD_VERSION = "20260409c";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -4295,11 +4295,24 @@ function createPongGame() {
 
   function getAiConfig() {
     const mode = appState.difficulty;
-    if (mode === "chill") return { trackChance: 0.012, idleChance: 0.01, farSpeed: 1.25, nearSpeed: 0.95, error: 95 };
-    if (mode === "easy") return { trackChance: 0.018, idleChance: 0.012, farSpeed: 1.7, nearSpeed: 1.1, error: 72 };
-    if (mode === "hard") return { trackChance: 0.05, idleChance: 0.018, farSpeed: 3.75, nearSpeed: 2.5, error: 24 };
-    if (mode === "chaos") return { trackChance: 0.075, idleChance: 0.02, farSpeed: 4.6, nearSpeed: 3.2, error: 10 };
-    return { trackChance: 0.032, idleChance: 0.015, farSpeed: 2.65, nearSpeed: 1.7, error: 44 };
+    const base =
+      mode === "chill"
+        ? { trackChance: 0.012, idleChance: 0.01, farSpeed: 1.25, nearSpeed: 0.95, error: 95 }
+        : mode === "easy"
+          ? { trackChance: 0.018, idleChance: 0.012, farSpeed: 1.7, nearSpeed: 1.1, error: 72 }
+          : mode === "hard"
+            ? { trackChance: 0.05, idleChance: 0.018, farSpeed: 3.75, nearSpeed: 2.5, error: 24 }
+            : mode === "chaos"
+              ? { trackChance: 0.075, idleChance: 0.02, farSpeed: 4.6, nearSpeed: 3.2, error: 10 }
+              : { trackChance: 0.032, idleChance: 0.015, farSpeed: 2.65, nearSpeed: 1.7, error: 44 };
+    const rallyLevel = playerScore + aiScore;
+    return {
+      trackChance: Math.min(0.12, base.trackChance + rallyLevel * 0.004),
+      idleChance: Math.max(0.002, base.idleChance - rallyLevel * 0.001),
+      farSpeed: base.farSpeed + rallyLevel * 0.14,
+      nearSpeed: base.nearSpeed + rallyLevel * 0.09,
+      error: Math.max(6, base.error - rallyLevel * 4),
+    };
   }
 
   function resetState() {
@@ -4320,11 +4333,12 @@ function createPongGame() {
   }
 
   function resetBall(direction = 1) {
+    const rallyLevel = playerScore + aiScore;
     ball = {
       x: 380,
       y: 220,
-      vx: 5 * direction,
-      vy: (Math.random() * 4) - 2,
+      vx: (5 + rallyLevel * 0.2) * direction,
+      vy: (Math.random() * (4 + rallyLevel * 0.25)) - (2 + rallyLevel * 0.125),
       r: 9,
     };
     aiTargetY = 220 + (Math.random() * 90 - 45);
@@ -6046,12 +6060,33 @@ function createBlackjackGame() {
 
 function createMinesGame() {
   let wrapper;
+  let stageLevel = 1;
   let board = [];
   let gameOver = false;
-  const size = 8;
-  const mineCount = 10;
+  let size = 8;
+  let mineCount = 10;
 
-  function resetState() {
+  function getBoardConfig() {
+    const base =
+      appState.difficulty === "chill"
+        ? { size: 7, mines: 7 }
+        : appState.difficulty === "easy"
+          ? { size: 8, mines: 9 }
+          : appState.difficulty === "hard"
+            ? { size: 9, mines: 14 }
+            : appState.difficulty === "chaos"
+              ? { size: 10, mines: 18 }
+              : { size: 8, mines: 11 };
+    return {
+      size: Math.min(10, base.size + Math.floor((stageLevel - 1) / 3)),
+      mines: base.mines + stageLevel * 2,
+    };
+  }
+
+  function resetState(keepScore = false) {
+    const config = getBoardConfig();
+    size = config.size;
+    mineCount = Math.min(size * size - 1, config.mines);
     gameOver = false;
     board = Array.from({ length: size }, () =>
       Array.from({ length: size }, () => ({
@@ -6085,9 +6120,9 @@ function createMinesGame() {
       }
     }
 
-    setScore(0);
+    if (!keepScore) setScore(0);
     renderBoard();
-    setStatus("Clear the safe tiles");
+    setStatus(`Stage ${stageLevel}`);
   }
 
   function reveal(row, col) {
@@ -6120,11 +6155,17 @@ function createMinesGame() {
     const safeCells = board.flat().filter((item) => !item.mine).length;
     if (appState.score === safeCells) {
       gameOver = true;
-      setStatus("Cleared");
+      setStatus(`Stage ${stageLevel} cleared`);
+      window.setTimeout(() => {
+        stageLevel += 1;
+        resetState(true);
+      }, 650);
     }
   }
 
   function renderBoard() {
+    wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
+    wrapper.querySelector('[data-meta="board"]').textContent = `${size}x${size} • ${mineCount} mines`;
     wrapper.querySelector(".mine-grid").innerHTML = board
       .flatMap((row, rowIndex) =>
         row.map((cell, colIndex) => {
@@ -6145,7 +6186,7 @@ function createMinesGame() {
 
   return {
     id: "mines",
-    levelStep: 8,
+    getLevelText: () => String(stageLevel),
     title: "Mine Grid",
     tagline: "Minesweeper-style puzzle board",
     subtitle: "Reveal safe tiles, read the numbers, and avoid every bomb.",
@@ -6154,14 +6195,26 @@ function createMinesGame() {
     controls: "Click tiles to reveal them.",
     mount(stage) {
       stage.innerHTML = "";
-      wrapper = createDomShell(`<div class="mine-grid"></div>`);
+      wrapper = createDomShell(`
+        <div class="stack-layout">
+          <div class="game-meta">
+            <div class="info-chip-row">
+              <span class="info-chip" data-meta="stage">Stage 1</span>
+              <span class="info-chip" data-meta="board">8x8 • 10 mines</span>
+            </div>
+          </div>
+          <div class="mine-grid"></div>
+        </div>
+      `);
       stage.appendChild(wrapper);
+      stageLevel = 1;
       resetState();
     },
     start() {
       setStatus(gameOver ? "Reset for a new board" : "Clear the safe tiles");
     },
     reset() {
+      stageLevel = 1;
       resetState();
     },
     destroy() {},
@@ -7458,6 +7511,7 @@ function createStackerGame() {
 
 function createNumberVaultGame() {
   let wrapper;
+  let stageLevel = 1;
   let target = 0;
   let maxNumber = 100;
   let attemptsLeft = 8;
@@ -7467,21 +7521,31 @@ function createNumberVaultGame() {
   let guessesUsed = 0;
 
   function getConfig() {
-    if (appState.difficulty === "chill") return { maxNumber: 30, attempts: 13 };
-    if (appState.difficulty === "easy") return { maxNumber: 40, attempts: 12 };
-    if (appState.difficulty === "hard") return { maxNumber: 120, attempts: 8 };
-    if (appState.difficulty === "chaos") return { maxNumber: 150, attempts: 7 };
-    return { maxNumber: 80, attempts: 10 };
+    const base =
+      appState.difficulty === "chill"
+        ? { maxNumber: 30, attempts: 13 }
+        : appState.difficulty === "easy"
+          ? { maxNumber: 40, attempts: 12 }
+          : appState.difficulty === "hard"
+            ? { maxNumber: 120, attempts: 8 }
+            : appState.difficulty === "chaos"
+              ? { maxNumber: 150, attempts: 7 }
+              : { maxNumber: 80, attempts: 10 };
+    return {
+      maxNumber: base.maxNumber + stageLevel * (appState.difficulty === "chill" ? 6 : appState.difficulty === "easy" ? 8 : 12),
+      attempts: Math.max(4, base.attempts - Math.floor((stageLevel - 1) / 2)),
+    };
   }
 
   function updateHud() {
+    wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
     wrapper.querySelector('[data-meta="range"]').textContent = `Window ${lowBound}-${highBound}`;
     wrapper.querySelector('[data-meta="attempts"]').textContent = `Attempts ${attemptsLeft}`;
     wrapper.querySelector('[data-meta="best"]').textContent = `Target 1-${maxNumber}`;
     refreshLevel();
   }
 
-  function resetState() {
+  function resetState(keepScore = false) {
     const config = getConfig();
     maxNumber = config.maxNumber;
     attemptsLeft = config.attempts;
@@ -7490,7 +7554,7 @@ function createNumberVaultGame() {
     target = 1 + Math.floor(Math.random() * maxNumber);
     solved = false;
     guessesUsed = 0;
-    setScore(0);
+    if (!keepScore) setScore(0);
     wrapper.querySelector(".guess-log").textContent = `Guess a number from 1 to ${maxNumber}. Each wrong guess now shrinks the live range for you.`;
     wrapper.querySelector("input").value = "";
     updateHud();
@@ -7515,9 +7579,13 @@ function createNumberVaultGame() {
     updateHud();
     if (guess === target) {
       solved = true;
-      setScore(attemptsLeft * 15 + 25);
+      setScore(appState.score + attemptsLeft * 15 + 25 + stageLevel * 8);
       wrapper.querySelector(".guess-log").textContent = `Vault opened. ${guess} was correct.`;
       setStatus("Solved");
+      window.setTimeout(() => {
+        stageLevel += 1;
+        resetState(true);
+      }, 650);
       return;
     }
 
@@ -7541,7 +7609,7 @@ function createNumberVaultGame() {
 
   return {
     id: "vault",
-    getLevelText: () => String(1 + guessesUsed),
+    getLevelText: () => String(stageLevel),
     title: "Number Vault",
     tagline: "Guess-the-code puzzle",
     subtitle: "Crack the hidden code before your guesses run out.",
@@ -7554,6 +7622,7 @@ function createNumberVaultGame() {
         <div class="guess-card">
           <div class="game-meta">
             <div class="info-chip-row">
+              <span class="info-chip" data-meta="stage">Stage 1</span>
               <span class="info-chip" data-meta="range">Window 1-100</span>
               <span class="info-chip" data-meta="attempts">Attempts 8</span>
               <span class="info-chip" data-meta="best">Target 1-100</span>
@@ -7567,6 +7636,7 @@ function createNumberVaultGame() {
         </div>
       `);
       stage.appendChild(wrapper);
+      stageLevel = 1;
       wrapper.querySelector("button").addEventListener("click", submitGuess);
       wrapper.querySelector("input").addEventListener("keydown", (event) => {
         if (event.key === "Enter") submitGuess();
@@ -7578,6 +7648,7 @@ function createNumberVaultGame() {
       setStatus("Crack the vault");
     },
     reset() {
+      stageLevel = 1;
       resetState();
     },
     destroy() {},
@@ -8751,6 +8822,15 @@ function createRpsRushGame() {
     scissors: "✌️",
   };
 
+  function chooseCpuMove(playerMove) {
+    const totalRounds = rounds + wins + losses;
+    const pressure = Math.min(0.38, totalRounds * 0.02 + Math.max(0, streak - 1) * 0.04);
+    const counterMove =
+      playerMove === "rock" ? "paper" : playerMove === "paper" ? "scissors" : "rock";
+    if (Math.random() < pressure) return counterMove;
+    return picks[Math.floor(Math.random() * picks.length)];
+  }
+
   function resultFor(player, cpu) {
     if (player === cpu) return "draw";
     if (
@@ -8798,7 +8878,7 @@ function createRpsRushGame() {
   function playLockedMove() {
     if (!selectedMove || revealActive) return;
     const move = selectedMove;
-    const cpu = picks[Math.floor(Math.random() * picks.length)];
+    const cpu = chooseCpuMove(move);
     const outcome = resultFor(move, cpu);
     revealActive = true;
     lastPlayerMove = move;
@@ -16040,19 +16120,20 @@ function createDashCubeGame() {
   let distance = 0;
   let stageLevel = 1;
   let player;
-  let obstacles = [];
+  let pieces = [];
   let particles = [];
   let spawnTimer = 0;
   let floorY = 298;
   let jumpQueued = false;
+  let flashTimer = 0;
 
   function getConfig() {
     const mode = appState.difficulty;
-    if (mode === "chill") return { speed: 5, gravity: 0.56, jump: 11.8, spawn: 112, gap: 76 };
-    if (mode === "easy") return { speed: 5.6, gravity: 0.6, jump: 12.3, spawn: 102, gap: 72 };
-    if (mode === "hard") return { speed: 7.2, gravity: 0.7, jump: 13.2, spawn: 86, gap: 60 };
-    if (mode === "chaos") return { speed: 8.1, gravity: 0.76, jump: 13.6, spawn: 76, gap: 54 };
-    return { speed: 6.3, gravity: 0.65, jump: 12.8, spawn: 94, gap: 66 };
+    if (mode === "chill") return { speed: 5, gravity: 0.56, jump: 11.8, orbJump: 10.4, spawn: 116, gap: 92 };
+    if (mode === "easy") return { speed: 5.7, gravity: 0.6, jump: 12.3, orbJump: 10.9, spawn: 106, gap: 84 };
+    if (mode === "hard") return { speed: 7.25, gravity: 0.7, jump: 13.2, orbJump: 11.6, spawn: 88, gap: 68 };
+    if (mode === "chaos") return { speed: 8.15, gravity: 0.76, jump: 13.6, orbJump: 12, spawn: 78, gap: 58 };
+    return { speed: 6.35, gravity: 0.65, jump: 12.8, orbJump: 11.2, spawn: 96, gap: 76 };
   }
 
   function resetPlayer() {
@@ -16063,6 +16144,7 @@ function createDashCubeGame() {
       vy: 0,
       grounded: true,
       angle: 0,
+      trail: [],
     };
   }
 
@@ -16071,9 +16153,10 @@ function createDashCubeGame() {
     distance = 0;
     stageLevel = 1;
     spawnTimer = 0;
-    obstacles = [];
+    pieces = [];
     particles = [];
     jumpQueued = false;
+    flashTimer = 0;
     setScore(0);
     resetPlayer();
     draw();
@@ -16084,55 +16167,70 @@ function createDashCubeGame() {
     jumpQueued = true;
   }
 
-  function makeObstacle() {
+  function makePattern() {
     const config = getConfig();
-    const scaledSpeed = config.speed + stageLevel * 0.16;
-    const typeRoll = Math.random();
-    if (typeRoll < 0.22 && stageLevel >= 3) {
-      return {
-        kind: "double",
-        x: 860,
-        width: 52,
-        height: 34,
-        speed: scaledSpeed,
-      };
+    const speed = config.speed + stageLevel * 0.18;
+    const startX = 900;
+    const roll = Math.random();
+    if (roll < 0.18 && stageLevel >= 2) {
+      return [
+        { kind: "pad", x: startX, width: 36, height: 12, speed, used: false },
+        { kind: "spike", x: startX + 64, width: 34, height: 34, speed },
+        { kind: "double", x: startX + 116, width: 54, height: 34, speed },
+      ];
     }
-    if (typeRoll < 0.44 && stageLevel >= 5) {
-      return {
-        kind: "block",
-        x: 860,
-        width: 42,
-        height: 58,
-        speed: scaledSpeed,
-      };
+    if (roll < 0.36 && stageLevel >= 3) {
+      return [
+        { kind: "block", x: startX, width: 62, height: 54, speed },
+        { kind: "orb", x: startX + 86, y: floorY - 126, width: 26, height: 26, speed, used: false },
+        { kind: "spike", x: startX + 142, width: 34, height: 34, speed },
+      ];
     }
-    return {
-      kind: "spike",
-      x: 860,
-      width: 34,
-      height: 34,
-      speed: scaledSpeed,
-    };
+    if (roll < 0.52 && stageLevel >= 4) {
+      return [
+        { kind: "roof", x: startX + 24, width: 38, height: 30, speed },
+        { kind: "spike", x: startX + 92, width: 34, height: 34, speed },
+        { kind: "roof", x: startX + 162, width: 38, height: 30, speed },
+      ];
+    }
+    if (roll < 0.68 && stageLevel >= 5) {
+      return [
+        { kind: "triple", x: startX, width: 80, height: 34, speed },
+        { kind: "orb", x: startX + 118, y: floorY - 110, width: 26, height: 26, speed, used: false },
+        { kind: "block", x: startX + 176, width: 54, height: 42, speed },
+      ];
+    }
+    if (roll < 0.84) {
+      return [
+        { kind: "double", x: startX, width: 54, height: 34, speed },
+        { kind: "spike", x: startX + 84, width: 34, height: 34, speed },
+      ];
+    }
+    return [{ kind: "spike", x: startX, width: 34, height: 34, speed }];
   }
 
-  function spawnObstacle() {
+  function patternRightEdge(piece) {
+    return piece.x + piece.width;
+  }
+
+  function spawnPattern() {
     const config = getConfig();
-    const last = obstacles[obstacles.length - 1];
-    if (last && 860 - (last.x + last.width) < config.gap + Math.random() * 40) return;
-    obstacles.push(makeObstacle());
+    const last = pieces[pieces.length - 1];
+    if (last && 900 - patternRightEdge(last) < config.gap + Math.random() * 40) return;
+    pieces.push(...makePattern());
   }
 
-  function obstacleBounds(obstacle) {
-    return {
-      x: obstacle.x,
-      y: floorY - obstacle.height,
-      width: obstacle.width,
-      height: obstacle.height,
-    };
-  }
-
-  function rectsOverlap(a, b) {
-    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  function pieceBounds(piece) {
+    if (piece.kind === "orb") {
+      return { x: piece.x, y: piece.y, width: piece.width, height: piece.height };
+    }
+    if (piece.kind === "roof") {
+      return { x: piece.x, y: 52, width: piece.width, height: piece.height };
+    }
+    if (piece.kind === "pad") {
+      return { x: piece.x, y: floorY - 12, width: piece.width, height: piece.height };
+    }
+    return { x: piece.x, y: floorY - piece.height, width: piece.width, height: piece.height };
   }
 
   function playerBounds() {
@@ -16144,18 +16242,31 @@ function createDashCubeGame() {
     };
   }
 
-  function crash() {
-    running = false;
-    particles = Array.from({ length: 16 }, () => ({
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  }
+
+  function spawnCrashParticles() {
+    particles = Array.from({ length: 18 }, () => ({
       x: player.x + player.size / 2,
       y: player.y + player.size / 2,
-      vx: Math.random() * 6 - 3,
-      vy: Math.random() * -6,
-      life: 32 + Math.random() * 18,
+      vx: Math.random() * 7 - 3.5,
+      vy: Math.random() * -6.5,
+      life: 30 + Math.random() * 20,
+      color: Math.random() < 0.5 ? "#ffd166" : "#7af0c8",
     }));
+  }
+
+  function crash() {
+    running = false;
+    spawnCrashParticles();
     setStatus(`Crashed at ${Math.floor(distance)}m`);
     scheduleAutoReset(1100);
     draw();
+  }
+
+  function pulseFlash() {
+    flashTimer = 10;
   }
 
   function updateHud() {
@@ -16171,70 +16282,145 @@ function createDashCubeGame() {
         ...particle,
         x: particle.x + particle.vx,
         y: particle.y + particle.vy,
-        vy: particle.vy + 0.22,
+        vy: particle.vy + 0.2,
         life: particle.life - 1,
       }))
       .filter((particle) => particle.life > 0);
   }
 
+  function handleJumpInput(config) {
+    if (!jumpQueued) return;
+    if (player.grounded) {
+      player.vy = -config.jump;
+      player.grounded = false;
+      pulseFlash();
+      jumpQueued = false;
+      return;
+    }
+    const bounds = playerBounds();
+    const ring = pieces.find(
+      (piece) =>
+        piece.kind === "orb" &&
+        !piece.used &&
+        Math.abs((piece.x + piece.width / 2) - (bounds.x + bounds.width / 2)) < 44 &&
+        Math.abs((piece.y + piece.height / 2) - (bounds.y + bounds.height / 2)) < 52,
+    );
+    if (ring) {
+      player.vy = -config.orbJump;
+      ring.used = true;
+      pulseFlash();
+    }
+    jumpQueued = false;
+  }
+
+  function findSupportY(previousBottom) {
+    let supportY = floorY - player.size;
+    let foundPlatform = false;
+    const playerMidX = player.x + player.size / 2;
+    pieces.forEach((piece) => {
+      if (piece.kind !== "block") return;
+      const top = floorY - piece.height - player.size;
+      if (playerMidX < piece.x + 6 || playerMidX > piece.x + piece.width - 6) return;
+      if (previousBottom <= floorY - piece.height + 6 && player.y >= top) {
+        supportY = Math.min(supportY, top);
+        foundPlatform = true;
+      }
+    });
+    return foundPlatform ? supportY : floorY - player.size;
+  }
+
+  function checkPadBounce(config) {
+    pieces.forEach((piece) => {
+      if (piece.kind !== "pad" || piece.used) return;
+      const bounds = pieceBounds(piece);
+      const playerRect = playerBounds();
+      if (player.grounded && rectsOverlap(playerRect, bounds)) {
+        piece.used = true;
+        player.vy = -(config.jump + 2.2);
+        player.grounded = false;
+        pulseFlash();
+      }
+    });
+  }
+
   function update() {
     const config = getConfig();
     stageLevel = 1 + Math.floor(distance / 180);
-    const speed = config.speed + stageLevel * 0.16;
 
-    if (jumpQueued && player.grounded) {
-      player.vy = -config.jump;
-      player.grounded = false;
-      jumpQueued = false;
-    }
-    jumpQueued = false;
+    handleJumpInput(config);
 
+    const previousBottom = player.y + player.size;
     player.vy += config.gravity;
     player.y += player.vy;
-    if (player.y >= floorY - player.size) {
-      player.y = floorY - player.size;
+
+    const supportY = findSupportY(previousBottom);
+    if (player.y >= supportY) {
+      player.y = supportY;
       player.vy = 0;
       player.grounded = true;
       player.angle = 0;
     } else {
-      player.angle += 0.16;
+      player.grounded = false;
+      player.angle += 0.18;
     }
 
     spawnTimer += 1;
-    if (spawnTimer >= Math.max(32, config.spawn - stageLevel * 2)) {
+    if (spawnTimer >= Math.max(28, config.spawn - stageLevel * 2)) {
       spawnTimer = 0;
-      spawnObstacle();
+      spawnPattern();
     }
 
-    obstacles.forEach((obstacle) => {
-      obstacle.x -= obstacle.speed;
+    pieces.forEach((piece) => {
+      piece.x -= piece.speed;
     });
-    obstacles = obstacles.filter((obstacle) => obstacle.x + obstacle.width > -40);
+    pieces = pieces.filter((piece) => piece.x + piece.width > -50);
+
+    checkPadBounce(config);
 
     const bounds = playerBounds();
-    const hit = obstacles.some((obstacle) => rectsOverlap(bounds, obstacleBounds(obstacle)));
-    if (hit) {
+    const lethalHit = pieces.some((piece) => {
+      if (piece.kind === "orb" || piece.kind === "pad" || piece.kind === "block") return false;
+      return rectsOverlap(bounds, pieceBounds(piece));
+    });
+    if (lethalHit) {
       crash();
       return;
     }
 
-    distance += speed * 0.16;
+    if (flashTimer > 0) flashTimer -= 1;
+    distance += (config.speed + stageLevel * 0.18) * 0.16;
+    player.trail.push({ x: player.x + player.size / 2, y: player.y + player.size / 2 });
+    if (player.trail.length > 12) player.trail.shift();
     setScore(Math.floor(distance));
     updateHud();
   }
 
   function drawBackground() {
     const gradient = ctx.createLinearGradient(0, 0, 0, 360);
-    gradient.addColorStop(0, "#112a4b");
+    gradient.addColorStop(0, "#142d56");
     gradient.addColorStop(1, "#08111f");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 860, 360);
 
-    ctx.fillStyle = "rgba(255,255,255,0.07)";
-    for (let index = 0; index < 8; index += 1) {
-      const x = ((index * 140) - (distance * 0.5)) % 980;
-      ctx.fillRect(x, 120 + (index % 3) * 24, 76, 10);
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 1;
+    for (let x = -40; x < 920; x += 40) {
+      const offsetX = (x - (distance * 1.2) % 40);
+      ctx.beginPath();
+      ctx.moveTo(offsetX, 0);
+      ctx.lineTo(offsetX, 360);
+      ctx.stroke();
     }
+    for (let y = 28; y < 300; y += 28) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(860, y);
+      ctx.stroke();
+    }
+
+    const pulseAlpha = 0.08 + flashTimer * 0.02;
+    ctx.fillStyle = `rgba(122, 240, 200, ${pulseAlpha})`;
+    ctx.fillRect(0, 0, 860, 360);
 
     ctx.fillStyle = "#153253";
     ctx.fillRect(0, floorY, 860, 62);
@@ -16242,36 +16428,73 @@ function createDashCubeGame() {
     ctx.fillRect(0, floorY, 860, 8);
   }
 
-  function drawObstacle(obstacle) {
-    const x = obstacle.x;
-    const y = floorY - obstacle.height;
-    if (obstacle.kind === "block") {
-      ctx.fillStyle = "#ff8a3d";
-      ctx.fillRect(x, y, obstacle.width, obstacle.height);
-      return;
-    }
-    ctx.fillStyle = obstacle.kind === "double" ? "#ffd166" : "#ff5f7a";
-    if (obstacle.kind === "double") {
-      for (let index = 0; index < 2; index += 1) {
-        const spikeX = x + index * 24;
-        ctx.beginPath();
-        ctx.moveTo(spikeX, floorY);
-        ctx.lineTo(spikeX + 12, y);
-        ctx.lineTo(spikeX + 24, floorY);
-        ctx.closePath();
-        ctx.fill();
-      }
-      return;
-    }
+  function drawSpike(x, y, width, upsideDown = false) {
     ctx.beginPath();
-    ctx.moveTo(x, floorY);
-    ctx.lineTo(x + obstacle.width / 2, y);
-    ctx.lineTo(x + obstacle.width, floorY);
+    if (upsideDown) {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + width / 2, y + 30);
+      ctx.lineTo(x + width, y);
+    } else {
+      ctx.moveTo(x, floorY);
+      ctx.lineTo(x + width / 2, y);
+      ctx.lineTo(x + width, floorY);
+    }
     ctx.closePath();
     ctx.fill();
   }
 
+  function drawPiece(piece) {
+    const bounds = pieceBounds(piece);
+    if (piece.kind === "block") {
+      ctx.fillStyle = "#ff8a3d";
+      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillRect(bounds.x, bounds.y, bounds.width, 6);
+      return;
+    }
+    if (piece.kind === "pad") {
+      ctx.fillStyle = piece.used ? "rgba(122,240,200,0.45)" : "#7af0c8";
+      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      ctx.fillStyle = "#08111f";
+      ctx.fillRect(bounds.x + 6, bounds.y + 3, bounds.width - 12, bounds.height - 6);
+      return;
+    }
+    if (piece.kind === "orb") {
+      ctx.fillStyle = piece.used ? "rgba(255, 209, 102, 0.36)" : "#ffd166";
+      ctx.beginPath();
+      ctx.arc(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2 + 6, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    ctx.fillStyle = piece.kind === "roof" ? "#8f66ff" : piece.kind === "triple" ? "#ffd166" : piece.kind === "double" ? "#ff9f5b" : "#ff5f7a";
+    if (piece.kind === "roof") {
+      drawSpike(bounds.x, bounds.y, bounds.width, true);
+      return;
+    }
+    if (piece.kind === "double") {
+      drawSpike(bounds.x, floorY - bounds.height, 24);
+      drawSpike(bounds.x + 24, floorY - bounds.height, 24);
+      return;
+    }
+    if (piece.kind === "triple") {
+      drawSpike(bounds.x, floorY - bounds.height, 26);
+      drawSpike(bounds.x + 26, floorY - bounds.height, 26);
+      drawSpike(bounds.x + 52, floorY - bounds.height, 26);
+      return;
+    }
+    drawSpike(bounds.x, floorY - bounds.height, bounds.width);
+  }
+
   function drawPlayer() {
+    player.trail.forEach((point, index) => {
+      ctx.fillStyle = `rgba(122, 240, 200, ${(index + 1) / player.trail.length * 0.22})`;
+      ctx.fillRect(point.x - 8, point.y - 8, 16, 16);
+    });
     ctx.save();
     ctx.translate(player.x + player.size / 2, player.y + player.size / 2);
     ctx.rotate(player.angle);
@@ -16280,12 +16503,13 @@ function createDashCubeGame() {
     ctx.fillStyle = "#08111f";
     ctx.fillRect(-9, -6, 6, 6);
     ctx.fillRect(3, -6, 6, 6);
+    ctx.fillRect(-7, 6, 14, 4);
     ctx.restore();
   }
 
   function drawParticles() {
     particles.forEach((particle) => {
-      ctx.fillStyle = `rgba(255, 209, 102, ${Math.max(0.1, particle.life / 50)})`;
+      ctx.fillStyle = particle.color || `rgba(255, 209, 102, ${Math.max(0.1, particle.life / 50)})`;
       ctx.fillRect(particle.x, particle.y, 6, 6);
     });
   }
@@ -16293,7 +16517,7 @@ function createDashCubeGame() {
   function draw() {
     ctx.clearRect(0, 0, 860, 360);
     drawBackground();
-    obstacles.forEach(drawObstacle);
+    pieces.forEach(drawPiece);
     drawPlayer();
     drawParticles();
 
@@ -16303,10 +16527,10 @@ function createDashCubeGame() {
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
       ctx.font = "700 34px Trebuchet MS";
-      ctx.fillText("Cube Rush", 430, 150);
+      ctx.fillText("Cube Rush", 430, 142);
       ctx.font = "22px Trebuchet MS";
-      ctx.fillText("Jump over spikes and survive the speed ramp", 430, 188);
-      ctx.fillText("Press Start, Space, Up, or click to jump", 430, 220);
+      ctx.fillText("Pads bounce, rings boost, and patterns get tighter", 430, 180);
+      ctx.fillText("Press Start, Space, Up, or click to jump", 430, 214);
     }
   }
 
@@ -16327,10 +16551,10 @@ function createDashCubeGame() {
     id: "dash",
     title: "Cube Rush",
     tagline: "Geometry Dash-style cube runner",
-    subtitle: "Auto-run, jump cleanly, and survive the spike course as the speed ramps up.",
+    subtitle: "Auto-run, hit pads and rings, and survive denser obstacle patterns.",
     description:
-      "A one-button cube runner inspired by rhythm obstacle platformers. The cube auto-moves, obstacles get tighter over distance, and clean jump timing is everything.",
-    controls: "Press Space, Up, W, or click the stage to jump.",
+      "A one-button cube runner with jump pads, midair jump rings, platforms, roof spikes, and tighter pattern chains so it feels closer to a rhythm obstacle platformer than a plain endless runner.",
+    controls: "Press Space, Up, W, or click. Jump on the ground, or trigger yellow rings in midair for a second boost.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
       shell = createCanvasShell({

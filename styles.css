@@ -997,6 +997,11 @@ select {
   background: rgba(239, 68, 68, 0.28);
 }
 
+.mine-cell.flagged:not(.revealed) {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
 .reaction-pad {
   width: min(100%, 720px);
   min-height: 320px;

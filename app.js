@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260409c";
+const BUILD_VERSION = "20260410c";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -4904,11 +4904,24 @@ function createFlappyGame() {
   let bird;
   let pipes = [];
   let pipeCooldown = 0;
+  let stageLevel = 1;
+
+  function getRunConfig() {
+    const preset = getDifficultyPreset();
+    return {
+      gap: Math.max(88, preset.flappyGap - (stageLevel - 1) * 6),
+      spawnFrames: Math.max(52, preset.flappySpawnFrames - (stageLevel - 1) * 3),
+      pipeSpeed: preset.flappyPipeSpeed + (stageLevel - 1) * 0.16,
+      gravity: preset.flappyGravity + (stageLevel - 1) * 0.008,
+      lift: preset.flappyLift + Math.min(0.7, (stageLevel - 1) * 0.05),
+    };
+  }
 
   function resetState() {
     bird = { x: 160, y: 220, vy: 0, r: 16 };
     pipes = [];
     pipeCooldown = 0;
+    stageLevel = 1;
     running = false;
     setScore(0);
     updateHud();
@@ -4917,12 +4930,13 @@ function createFlappyGame() {
 
   function updateHud() {
     shell.hud.pipes.textContent = `Cleared ${appState.score}`;
-    shell.hud.tip.textContent = `${getDifficultyPreset().label} mode`;
+    shell.hud.tip.textContent = `Level ${stageLevel} • ${getDifficultyPreset().label}`;
+    refreshLevel();
   }
 
   function spawnPipe() {
-    const preset = getDifficultyPreset();
-    const gapHalf = preset.flappyGap / 2;
+    const config = getRunConfig();
+    const gapHalf = config.gap / 2;
     const gapY = gapHalf + 28 + Math.random() * (440 - gapHalf * 2 - 56);
     pipes.push({
       x: 760,
@@ -4934,18 +4948,19 @@ function createFlappyGame() {
   }
 
   function update() {
-    const preset = getDifficultyPreset();
+    stageLevel = 1 + Math.floor(appState.score / 3);
+    const config = getRunConfig();
     pipeCooldown -= 1;
     if (pipeCooldown <= 0) {
       spawnPipe();
-      pipeCooldown = preset.flappySpawnFrames;
+      pipeCooldown = config.spawnFrames;
     }
 
-    bird.vy += preset.flappyGravity;
+    bird.vy += config.gravity;
     bird.y += bird.vy;
 
     pipes.forEach((pipe) => {
-      pipe.x -= preset.flappyPipeSpeed;
+      pipe.x -= config.pipeSpeed;
       if (!pipe.passed && pipe.x + pipe.width < bird.x) {
         pipe.passed = true;
         setScore(appState.score + 1);
@@ -5015,7 +5030,7 @@ function createFlappyGame() {
 
   return {
     id: "flappy",
-    levelStep: 4,
+    getLevelText: () => String(stageLevel),
     title: "Flappy Drift",
     tagline: "Bird dodging through gaps",
     subtitle: "One-button flying chaos inspired by classic tap-to-fly browser hits.",
@@ -5054,7 +5069,7 @@ function createFlappyGame() {
       if (!running) {
         this.start();
       }
-      bird.vy = -getDifficultyPreset().flappyLift;
+      bird.vy = -getRunConfig().lift;
     },
     destroy() {
       running = false;
@@ -6066,6 +6081,10 @@ function createMinesGame() {
   let size = 8;
   let mineCount = 10;
 
+  function getFlagCount() {
+    return board.flat().filter((cell) => cell.flagged).length;
+  }
+
   function getBoardConfig() {
     const base =
       appState.difficulty === "chill"
@@ -6092,6 +6111,7 @@ function createMinesGame() {
       Array.from({ length: size }, () => ({
         mine: false,
         revealed: false,
+        flagged: false,
         count: 0,
       })),
     );
@@ -6127,7 +6147,7 @@ function createMinesGame() {
 
   function reveal(row, col) {
     const cell = board[row]?.[col];
-    if (!cell || cell.revealed || gameOver) return;
+    if (!cell || cell.revealed || cell.flagged || gameOver) return;
     cell.revealed = true;
     if (cell.mine) {
       gameOver = true;
@@ -6163,24 +6183,52 @@ function createMinesGame() {
     }
   }
 
+  function toggleFlag(row, col) {
+    const cell = board[row]?.[col];
+    if (!cell || cell.revealed || gameOver) return;
+    cell.flagged = !cell.flagged;
+    renderBoard();
+    setStatus(cell.flagged ? "Flag placed" : "Flag removed");
+  }
+
   function renderBoard() {
     wrapper.querySelector('[data-meta="stage"]').textContent = `Stage ${stageLevel}`;
     wrapper.querySelector('[data-meta="board"]').textContent = `${size}x${size} • ${mineCount} mines`;
-    wrapper.querySelector(".mine-grid").innerHTML = board
+    wrapper.querySelector('[data-meta="flags"]').textContent = `Flags ${getFlagCount()}/${mineCount}`;
+    const grid = wrapper.querySelector(".mine-grid");
+    grid.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+    grid.innerHTML = board
       .flatMap((row, rowIndex) =>
         row.map((cell, colIndex) => {
           const classes = ["mine-cell"];
           if (cell.revealed) classes.push("revealed");
           if (cell.revealed && cell.mine) classes.push("bomb");
-          const content = cell.revealed ? (cell.mine ? "💣" : cell.count || "") : "";
+          if (cell.flagged) classes.push("flagged");
+          const content = cell.revealed
+            ? cell.mine
+              ? "💣"
+              : cell.count || ""
+            : cell.flagged
+              ? "🚩"
+              : "";
           return `<button class="${classes.join(" ")}" data-row="${rowIndex}" data-col="${colIndex}">${content}</button>`;
         }),
       )
       .join("");
     wrapper.querySelectorAll("[data-row]").forEach((button) => {
-      button.addEventListener("click", () =>
-        reveal(Number(button.dataset.row), Number(button.dataset.col)),
-      );
+      button.addEventListener("click", (event) => {
+        const row = Number(button.dataset.row);
+        const col = Number(button.dataset.col);
+        if (event.shiftKey) {
+          toggleFlag(row, col);
+          return;
+        }
+        reveal(row, col);
+      });
+      button.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        toggleFlag(Number(button.dataset.row), Number(button.dataset.col));
+      });
     });
   }
 
@@ -6192,7 +6240,7 @@ function createMinesGame() {
     subtitle: "Reveal safe tiles, read the numbers, and avoid every bomb.",
     description:
       "A compact minesweeper-inspired puzzle with auto-flood reveal for empty patches and a local best score.",
-    controls: "Click tiles to reveal them.",
+    controls: "Click to reveal. Right-click or Shift-click to place a flag.",
     mount(stage) {
       stage.innerHTML = "";
       wrapper = createDomShell(`
@@ -6201,6 +6249,7 @@ function createMinesGame() {
             <div class="info-chip-row">
               <span class="info-chip" data-meta="stage">Stage 1</span>
               <span class="info-chip" data-meta="board">8x8 • 10 mines</span>
+              <span class="info-chip" data-meta="flags">Flags 0/10</span>
             </div>
           </div>
           <div class="mine-grid"></div>
@@ -10935,26 +10984,35 @@ function createLaneHopperGame() {
 
   function getConfig() {
     const mode = appState.difficulty;
-    if (mode === "chill") return { speed: 1.05, density: 0.16, widthBias: 1.45 };
-    if (mode === "easy") return { speed: 1.35, density: 0.22, widthBias: 1.32 };
-    if (mode === "hard") return { speed: 2.25, density: 0.38, widthBias: 1.08 };
-    if (mode === "chaos") return { speed: 2.85, density: 0.5, widthBias: 0.95 };
-    return { speed: 1.75, density: 0.3, widthBias: 1.18 };
+    if (mode === "chill") return { speed: 1.05, density: 0.16, widthBias: 1.45, densityRamp: 0.02, speedRamp: 0.08, widthRamp: 0.028 };
+    if (mode === "easy") return { speed: 1.35, density: 0.22, widthBias: 1.32, densityRamp: 0.028, speedRamp: 0.1, widthRamp: 0.034 };
+    if (mode === "hard") return { speed: 2.25, density: 0.38, widthBias: 1.08, densityRamp: 0.044, speedRamp: 0.14, widthRamp: 0.045 };
+    if (mode === "chaos") return { speed: 2.85, density: 0.5, widthBias: 0.95, densityRamp: 0.05, speedRamp: 0.17, widthRamp: 0.05 };
+    return { speed: 1.75, density: 0.3, widthBias: 1.18, densityRamp: 0.035, speedRamp: 0.12, widthRamp: 0.04 };
   }
 
   function buildLanes() {
     const config = getConfig();
+    const level = crossings + 1;
     lanes = Array.from({ length: rows - 2 }, (_, laneIndex) => {
       const row = laneIndex + 1;
       const direction = laneIndex % 2 === 0 ? 1 : -1;
-      const obstacleCount = Math.max(1, 1 + Math.round(config.density * 5) + (laneIndex % 2));
-      const width = (laneIndex % 3 === 0 ? 1.15 : 0.92) * config.widthBias;
+      const laneDensity = config.density + Math.min(0.34, (level - 1) * config.densityRamp);
+      const obstacleCount = clamp(
+        1 + Math.round(laneDensity * 5) + (laneIndex % 2) + Math.floor((level - 1) / 3),
+        1,
+        5,
+      );
+      const width = Math.max(
+        0.56,
+        (laneIndex % 3 === 0 ? 1.15 : 0.92) * config.widthBias - (level - 1) * config.widthRamp,
+      );
       return {
         row,
         direction,
-        speed: config.speed + laneIndex * 0.08 + crossings * 0.02,
+        speed: config.speed + laneIndex * 0.08 + (level - 1) * config.speedRamp,
         obstacles: Array.from({ length: obstacleCount }, (_, index) => ({
-          x: ((index * 2.9 + laneIndex * 0.8) % (cols + 3)) - 2,
+          x: ((index * (2.4 + Math.max(0, 0.45 - (level - 1) * 0.02)) + laneIndex * 0.8) % (cols + 3.2)) - 2,
           width,
         })),
       };
@@ -14079,6 +14137,7 @@ function createJetpackGapGame() {
   let player;
   let walls = [];
   let spawnTimer = 0;
+  let stageLevel = 1;
   const keys = { thrust: false };
 
   function getConfig() {
@@ -14089,10 +14148,21 @@ function createJetpackGapGame() {
     return { gap: 138, speed: 202, gravity: 630, thrust: -850 };
   }
 
+  function getRunConfig() {
+    const base = getConfig();
+    return {
+      gap: Math.max(90, base.gap - (stageLevel - 1) * 4),
+      speed: base.speed + (stageLevel - 1) * 12,
+      gravity: base.gravity + (stageLevel - 1) * 18,
+      thrust: base.thrust - (stageLevel - 1) * 8,
+    };
+  }
+
   function updateHud() {
+    const config = getRunConfig();
     shell.hud.score.textContent = `Score ${appState.score}`;
-    shell.hud.gap.textContent = `Gap ${getConfig().gap}`;
-    shell.hud.speed.textContent = `Speed ${Math.round(getConfig().speed)}`;
+    shell.hud.gap.textContent = `Gap ${Math.round(config.gap)}`;
+    shell.hud.speed.textContent = `Level ${stageLevel} • ${Math.round(config.speed)}`;
     refreshLevel();
   }
 
@@ -14101,6 +14171,7 @@ function createJetpackGapGame() {
     player = { x: 120, y: 190, vy: 0 };
     walls = [];
     spawnTimer = 0;
+    stageLevel = 1;
     setScore(0);
     updateHud();
     draw();
@@ -14114,14 +14185,17 @@ function createJetpackGapGame() {
 
   function update(delta) {
     if (!running) return;
-    player.vy += getConfig().gravity * (delta / 1000);
+    stageLevel = 1 + Math.floor(appState.score / 4);
+    const config = getRunConfig();
+    player.vy += config.gravity * (delta / 1000);
     if (keys.thrust) {
-      player.vy += getConfig().thrust * (delta / 1000);
+      player.vy += config.thrust * (delta / 1000);
     }
     player.y += player.vy * (delta / 1000);
     spawnTimer += delta;
-    while (spawnTimer >= 1100) {
-      spawnTimer -= 1100;
+    const spawnMs = Math.max(680, 1100 - (stageLevel - 1) * 35);
+    while (spawnTimer >= spawnMs) {
+      spawnTimer -= spawnMs;
       walls.push({
         x: 700,
         gapY: 90 + Math.random() * 180,
@@ -14129,13 +14203,13 @@ function createJetpackGapGame() {
       });
     }
     walls.forEach((wall) => {
-      wall.x -= getConfig().speed * (delta / 1000);
+      wall.x -= config.speed * (delta / 1000);
       if (!wall.passed && wall.x < player.x) {
         wall.passed = true;
         setScore(appState.score + 1);
       }
-      const topHeight = wall.gapY - getConfig().gap / 2;
-      const bottomY = wall.gapY + getConfig().gap / 2;
+      const topHeight = wall.gapY - config.gap / 2;
+      const bottomY = wall.gapY + config.gap / 2;
       const collides =
         player.x + 14 > wall.x &&
         player.x - 14 < wall.x + 52 &&
@@ -14153,6 +14227,7 @@ function createJetpackGapGame() {
   }
 
   function draw() {
+    const config = getRunConfig();
     ctx.clearRect(0, 0, 720, 360);
     const bg = ctx.createLinearGradient(0, 0, 720, 360);
     bg.addColorStop(0, "#0f172a");
@@ -14160,8 +14235,8 @@ function createJetpackGapGame() {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, 720, 360);
     walls.forEach((wall) => {
-      const topHeight = wall.gapY - getConfig().gap / 2;
-      const bottomY = wall.gapY + getConfig().gap / 2;
+      const topHeight = wall.gapY - config.gap / 2;
+      const bottomY = wall.gapY + config.gap / 2;
       ctx.fillStyle = "#38bdf8";
       ctx.fillRect(wall.x, 0, 52, topHeight);
       ctx.fillRect(wall.x, bottomY, 52, 360 - bottomY);
@@ -14213,7 +14288,7 @@ function createJetpackGapGame() {
     subtitle: "A tiny side-scroller where you feather the lift and slip through wall gaps.",
     description: "Use thrust to float up and ease off to fall, threading the jetpack runner through each gap.",
     controls: "Hold Space, W, or Up to thrust upward.",
-    levelStep: 6,
+    getLevelText: () => String(stageLevel),
     mount(stage) {
       stage.innerHTML = "";
       shell = createCanvasShell({
@@ -16126,14 +16201,17 @@ function createDashCubeGame() {
   let floorY = 298;
   let jumpQueued = false;
   let flashTimer = 0;
+  let portalCooldown = 0;
+  let speedModifier = 1;
+  let coinsCollected = 0;
 
   function getConfig() {
     const mode = appState.difficulty;
-    if (mode === "chill") return { speed: 5, gravity: 0.56, jump: 11.8, orbJump: 10.4, spawn: 116, gap: 92 };
-    if (mode === "easy") return { speed: 5.7, gravity: 0.6, jump: 12.3, orbJump: 10.9, spawn: 106, gap: 84 };
-    if (mode === "hard") return { speed: 7.25, gravity: 0.7, jump: 13.2, orbJump: 11.6, spawn: 88, gap: 68 };
-    if (mode === "chaos") return { speed: 8.15, gravity: 0.76, jump: 13.6, orbJump: 12, spawn: 78, gap: 58 };
-    return { speed: 6.35, gravity: 0.65, jump: 12.8, orbJump: 11.2, spawn: 96, gap: 76 };
+    if (mode === "chill") return { speed: 5, gravity: 0.56, jump: 11.8, orbJump: 10.4, shipGravity: 0.34, shipLift: 5.2, spawn: 116, gap: 92 };
+    if (mode === "easy") return { speed: 5.7, gravity: 0.6, jump: 12.3, orbJump: 10.9, shipGravity: 0.38, shipLift: 5.6, spawn: 106, gap: 84 };
+    if (mode === "hard") return { speed: 7.25, gravity: 0.7, jump: 13.2, orbJump: 11.6, shipGravity: 0.48, shipLift: 6.2, spawn: 88, gap: 68 };
+    if (mode === "chaos") return { speed: 8.15, gravity: 0.76, jump: 13.6, orbJump: 12, shipGravity: 0.54, shipLift: 6.5, spawn: 78, gap: 58 };
+    return { speed: 6.35, gravity: 0.65, jump: 12.8, orbJump: 11.2, shipGravity: 0.43, shipLift: 5.9, spawn: 96, gap: 76 };
   }
 
   function resetPlayer() {
@@ -16141,11 +16219,36 @@ function createDashCubeGame() {
       x: 116,
       y: floorY - 34,
       size: 34,
+      baseSize: 34,
+      scale: 1,
       vy: 0,
       grounded: true,
       angle: 0,
       trail: [],
+      form: "cube",
+      gravityDir: 1,
     };
+  }
+
+  function setPlayerScale(scale) {
+    player.scale = scale;
+    player.size = Math.round(player.baseSize * scale);
+    player.y = clamp(player.y, 18, floorY - player.size);
+  }
+
+  function setPlayerForm(form) {
+    player.form = form;
+    if (form === "cube") {
+      player.y =
+        player.gravityDir === 1
+          ? Math.min(player.y, floorY - player.size)
+          : Math.max(player.y, 18);
+    }
+  }
+
+  function setGravityDirection(direction) {
+    player.gravityDir = direction;
+    player.grounded = false;
   }
 
   function resetState() {
@@ -16157,6 +16260,9 @@ function createDashCubeGame() {
     particles = [];
     jumpQueued = false;
     flashTimer = 0;
+    portalCooldown = 0;
+    speedModifier = 1;
+    coinsCollected = 0;
     setScore(0);
     resetPlayer();
     draw();
@@ -16172,35 +16278,82 @@ function createDashCubeGame() {
     const speed = config.speed + stageLevel * 0.18;
     const startX = 900;
     const roll = Math.random();
-    if (roll < 0.18 && stageLevel >= 2) {
+    if (roll < 0.14 && stageLevel >= 8) {
+      return [
+        { kind: "portalSpeedUp", x: startX - 18, width: 28, height: 92, speed },
+        { kind: "portalShip", x: startX + 8, width: 30, height: 96, speed },
+        { kind: "saw", x: startX + 98, y: floorY - 110, width: 40, height: 40, speed },
+        { kind: "saw", x: startX + 170, y: floorY - 186, width: 44, height: 44, speed },
+        { kind: "coin", x: startX + 216, y: floorY - 214, width: 22, height: 22, speed, taken: false },
+        { kind: "saw", x: startX + 246, y: floorY - 132, width: 38, height: 38, speed },
+        { kind: "portalCube", x: startX + 318, width: 30, height: 96, speed },
+        { kind: "portalSpeedDown", x: startX + 356, width: 28, height: 92, speed },
+        { kind: "double", x: startX + 382, width: 54, height: 34, speed },
+      ];
+    }
+    if (roll < 0.26 && stageLevel >= 7) {
+      return [
+        { kind: "portalGravityUp", x: startX, width: 30, height: 96, speed },
+        { kind: "roof", x: startX + 58, width: 38, height: 30, speed },
+        { kind: "roof", x: startX + 112, width: 38, height: 30, speed },
+        { kind: "orbPink", x: startX + 164, y: 106, width: 24, height: 24, speed, used: false },
+        { kind: "coin", x: startX + 204, y: 92, width: 22, height: 22, speed, taken: false },
+        { kind: "roof", x: startX + 250, width: 38, height: 30, speed },
+        { kind: "portalGravityDown", x: startX + 310, width: 30, height: 96, speed },
+        { kind: "double", x: startX + 374, width: 54, height: 34, speed },
+      ];
+    }
+    if (roll < 0.42 && stageLevel >= 6) {
+      return [
+        { kind: "portalMini", x: startX, width: 28, height: 92, speed },
+        { kind: "double", x: startX + 70, width: 54, height: 34, speed },
+        { kind: "orbPink", x: startX + 116, y: floorY - 84, width: 24, height: 24, speed, used: false },
+        { kind: "orb", x: startX + 152, y: floorY - 118, width: 26, height: 26, speed, used: false },
+        { kind: "saw", x: startX + 194, y: floorY - 86, width: 34, height: 34, speed },
+        { kind: "coin", x: startX + 226, y: floorY - 160, width: 22, height: 22, speed, taken: false },
+        { kind: "portalMaxi", x: startX + 252, width: 28, height: 92, speed },
+        { kind: "triple", x: startX + 320, width: 80, height: 34, speed },
+      ];
+    }
+    if (roll < 0.56 && stageLevel >= 5) {
+      return [
+        { kind: "pad", x: startX, width: 36, height: 12, speed, used: false },
+        { kind: "saw", x: startX + 70, y: floorY - 74, width: 30, height: 30, speed },
+        { kind: "roof", x: startX + 120, width: 38, height: 30, speed },
+        { kind: "orbPink", x: startX + 162, y: floorY - 96, width: 24, height: 24, speed, used: false },
+        { kind: "orb", x: startX + 190, y: floorY - 132, width: 26, height: 26, speed, used: false },
+        { kind: "spike", x: startX + 236, width: 34, height: 34, speed },
+      ];
+    }
+    if (roll < 0.72 && stageLevel >= 2) {
       return [
         { kind: "pad", x: startX, width: 36, height: 12, speed, used: false },
         { kind: "spike", x: startX + 64, width: 34, height: 34, speed },
         { kind: "double", x: startX + 116, width: 54, height: 34, speed },
       ];
     }
-    if (roll < 0.36 && stageLevel >= 3) {
+    if (roll < 0.82 && stageLevel >= 3) {
       return [
         { kind: "block", x: startX, width: 62, height: 54, speed },
         { kind: "orb", x: startX + 86, y: floorY - 126, width: 26, height: 26, speed, used: false },
         { kind: "spike", x: startX + 142, width: 34, height: 34, speed },
       ];
     }
-    if (roll < 0.52 && stageLevel >= 4) {
+    if (roll < 0.92 && stageLevel >= 4) {
       return [
         { kind: "roof", x: startX + 24, width: 38, height: 30, speed },
         { kind: "spike", x: startX + 92, width: 34, height: 34, speed },
         { kind: "roof", x: startX + 162, width: 38, height: 30, speed },
       ];
     }
-    if (roll < 0.68 && stageLevel >= 5) {
+    if (roll < 0.98 && stageLevel >= 5) {
       return [
         { kind: "triple", x: startX, width: 80, height: 34, speed },
         { kind: "orb", x: startX + 118, y: floorY - 110, width: 26, height: 26, speed, used: false },
         { kind: "block", x: startX + 176, width: 54, height: 42, speed },
       ];
     }
-    if (roll < 0.84) {
+    if (roll < 0.995) {
       return [
         { kind: "double", x: startX, width: 54, height: 34, speed },
         { kind: "spike", x: startX + 84, width: 34, height: 34, speed },
@@ -16216,12 +16369,32 @@ function createDashCubeGame() {
   function spawnPattern() {
     const config = getConfig();
     const last = pieces[pieces.length - 1];
-    if (last && 900 - patternRightEdge(last) < config.gap + Math.random() * 40) return;
+    if (last && 900 - patternRightEdge(last) < Math.max(42, config.gap - stageLevel * 2) + Math.random() * 34) return;
     pieces.push(...makePattern());
   }
 
   function pieceBounds(piece) {
     if (piece.kind === "orb") {
+      return { x: piece.x, y: piece.y, width: piece.width, height: piece.height };
+    }
+    if (piece.kind === "orbPink" || piece.kind === "coin") {
+      return { x: piece.x, y: piece.y, width: piece.width, height: piece.height };
+    }
+    if (
+      [
+        "portalShip",
+        "portalCube",
+        "portalMini",
+        "portalMaxi",
+        "portalSpeedUp",
+        "portalSpeedDown",
+        "portalGravityUp",
+        "portalGravityDown",
+      ].includes(piece.kind)
+    ) {
+      return { x: piece.x, y: floorY - 102, width: piece.width, height: piece.height };
+    }
+    if (piece.kind === "saw") {
       return { x: piece.x, y: piece.y, width: piece.width, height: piece.height };
     }
     if (piece.kind === "roof") {
@@ -16271,8 +16444,8 @@ function createDashCubeGame() {
 
   function updateHud() {
     shell.hud.distance.textContent = `Distance ${Math.floor(distance)}m`;
-    shell.hud.mode.textContent = `${getDifficultyPreset().label} mode`;
-    shell.hud.level.textContent = `Level ${stageLevel}`;
+    shell.hud.mode.textContent = `${player.form === "ship" ? "Ship" : "Cube"}${player.scale < 1 ? " Mini" : ""} • ${player.gravityDir === -1 ? "Upside" : "Normal"} • x${speedModifier.toFixed(1)}`;
+    shell.hud.level.textContent = `Level ${stageLevel} • Coins ${coinsCollected}`;
     refreshLevel();
   }
 
@@ -16290,8 +16463,15 @@ function createDashCubeGame() {
 
   function handleJumpInput(config) {
     if (!jumpQueued) return;
+    if (player.form === "ship") {
+      const nextVelocity = player.vy - config.shipLift * player.gravityDir;
+      player.vy = clamp(nextVelocity, -config.shipLift * 1.25, config.shipLift * 1.25);
+      pulseFlash();
+      jumpQueued = false;
+      return;
+    }
     if (player.grounded) {
-      player.vy = -config.jump;
+      player.vy = -config.jump * player.gravityDir;
       player.grounded = false;
       pulseFlash();
       jumpQueued = false;
@@ -16300,36 +16480,23 @@ function createDashCubeGame() {
     const bounds = playerBounds();
     const ring = pieces.find(
       (piece) =>
-        piece.kind === "orb" &&
+        (piece.kind === "orb" || piece.kind === "orbPink") &&
         !piece.used &&
         Math.abs((piece.x + piece.width / 2) - (bounds.x + bounds.width / 2)) < 44 &&
         Math.abs((piece.y + piece.height / 2) - (bounds.y + bounds.height / 2)) < 52,
     );
     if (ring) {
-      player.vy = -config.orbJump;
+      player.vy =
+        -(ring.kind === "orbPink" ? config.orbJump - 1.6 : config.orbJump) *
+        player.gravityDir;
       ring.used = true;
       pulseFlash();
     }
     jumpQueued = false;
   }
 
-  function findSupportY(previousBottom) {
-    let supportY = floorY - player.size;
-    let foundPlatform = false;
-    const playerMidX = player.x + player.size / 2;
-    pieces.forEach((piece) => {
-      if (piece.kind !== "block") return;
-      const top = floorY - piece.height - player.size;
-      if (playerMidX < piece.x + 6 || playerMidX > piece.x + piece.width - 6) return;
-      if (previousBottom <= floorY - piece.height + 6 && player.y >= top) {
-        supportY = Math.min(supportY, top);
-        foundPlatform = true;
-      }
-    });
-    return foundPlatform ? supportY : floorY - player.size;
-  }
-
   function checkPadBounce(config) {
+    if (player.form !== "cube" || player.gravityDir !== 1) return;
     pieces.forEach((piece) => {
       if (piece.kind !== "pad" || piece.used) return;
       const bounds = pieceBounds(piece);
@@ -16345,23 +16512,56 @@ function createDashCubeGame() {
 
   function update() {
     const config = getConfig();
-    stageLevel = 1 + Math.floor(distance / 180);
+    stageLevel = 1 + Math.floor(distance / 160);
 
     handleJumpInput(config);
+    if (portalCooldown > 0) portalCooldown -= 1;
 
-    const previousBottom = player.y + player.size;
-    player.vy += config.gravity;
-    player.y += player.vy;
-
-    const supportY = findSupportY(previousBottom);
-    if (player.y >= supportY) {
-      player.y = supportY;
-      player.vy = 0;
-      player.grounded = true;
-      player.angle = 0;
-    } else {
+    if (player.form === "ship") {
+      player.vy += config.shipGravity * player.gravityDir;
+      player.y += player.vy;
       player.grounded = false;
-      player.angle += 0.18;
+      player.angle = clamp(player.vy * 0.045, -0.65, 0.65) * player.gravityDir;
+      if (player.y <= 18 || player.y + player.size >= floorY) {
+        crash();
+        return;
+      }
+    } else {
+      const previousTop = player.y;
+      const previousBottom = player.y + player.size;
+      player.vy += config.gravity * player.gravityDir;
+      player.y += player.vy;
+      if (player.gravityDir === 1) {
+        let supportY = floorY - player.size;
+        let foundPlatform = false;
+        const playerMidX = player.x + player.size / 2;
+        pieces.forEach((piece) => {
+          if (piece.kind !== "block") return;
+          const top = floorY - piece.height - player.size;
+          if (playerMidX < piece.x + 6 || playerMidX > piece.x + piece.width - 6) return;
+          if (previousBottom <= floorY - piece.height + 6 && player.y >= top) {
+            supportY = Math.min(supportY, top);
+            foundPlatform = true;
+          }
+        });
+        if (player.y >= (foundPlatform ? supportY : floorY - player.size)) {
+          player.y = foundPlatform ? supportY : floorY - player.size;
+          player.vy = 0;
+          player.grounded = true;
+          player.angle = 0;
+        } else {
+          player.grounded = false;
+          player.angle += 0.18;
+        }
+      } else if (player.y <= 18) {
+        player.y = 18;
+        player.vy = 0;
+        player.grounded = true;
+        player.angle = 0;
+      } else {
+        player.grounded = false;
+        player.angle -= 0.18;
+      }
     }
 
     spawnTimer += 1;
@@ -16371,15 +16571,80 @@ function createDashCubeGame() {
     }
 
     pieces.forEach((piece) => {
-      piece.x -= piece.speed;
+      piece.x -= piece.speed * speedModifier;
     });
     pieces = pieces.filter((piece) => piece.x + piece.width > -50);
 
     checkPadBounce(config);
 
     const bounds = playerBounds();
+    pieces.forEach((piece) => {
+      if (piece.kind !== "coin" || piece.taken) return;
+      if (rectsOverlap(bounds, pieceBounds(piece))) {
+        piece.taken = true;
+        coinsCollected += 1;
+        setScore(appState.score + 25 + stageLevel * 2);
+        pulseFlash();
+      }
+    });
+    if (portalCooldown === 0) {
+      const portal = pieces.find(
+        (piece) =>
+          [
+            "portalShip",
+            "portalCube",
+            "portalMini",
+            "portalMaxi",
+            "portalSpeedUp",
+            "portalSpeedDown",
+            "portalGravityUp",
+            "portalGravityDown",
+          ].includes(piece.kind) &&
+          rectsOverlap(bounds, pieceBounds(piece)),
+      );
+      if (portal) {
+        if (portal.kind === "portalShip") {
+          setPlayerForm("ship");
+          player.vy = Math.min(player.vy, 2);
+        } else if (portal.kind === "portalCube") {
+          setPlayerForm("cube");
+        } else if (portal.kind === "portalMini") {
+          setPlayerScale(0.72);
+        } else if (portal.kind === "portalMaxi") {
+          setPlayerScale(1);
+        } else if (portal.kind === "portalSpeedUp") {
+          speedModifier = Math.min(1.8, speedModifier + 0.22);
+        } else if (portal.kind === "portalSpeedDown") {
+          speedModifier = Math.max(0.9, speedModifier - 0.18);
+        } else if (portal.kind === "portalGravityUp") {
+          setGravityDirection(-1);
+        } else if (portal.kind === "portalGravityDown") {
+          setGravityDirection(1);
+        }
+        portalCooldown = 18;
+        pulseFlash();
+      }
+    }
     const lethalHit = pieces.some((piece) => {
-      if (piece.kind === "orb" || piece.kind === "pad" || piece.kind === "block") return false;
+      if (
+        piece.kind === "orb" ||
+        piece.kind === "orbPink" ||
+        piece.kind === "pad" ||
+        piece.kind === "block" ||
+        piece.kind === "coin" ||
+        [
+          "portalShip",
+          "portalCube",
+          "portalMini",
+          "portalMaxi",
+          "portalSpeedUp",
+          "portalSpeedDown",
+          "portalGravityUp",
+          "portalGravityDown",
+        ].includes(piece.kind)
+      ) {
+        return false;
+      }
       return rectsOverlap(bounds, pieceBounds(piece));
     });
     if (lethalHit) {
@@ -16388,7 +16653,7 @@ function createDashCubeGame() {
     }
 
     if (flashTimer > 0) flashTimer -= 1;
-    distance += (config.speed + stageLevel * 0.18) * 0.16;
+    distance += (config.speed + stageLevel * 0.18) * speedModifier * 0.16;
     player.trail.push({ x: player.x + player.size / 2, y: player.y + player.size / 2 });
     if (player.trail.length > 12) player.trail.shift();
     setScore(Math.floor(distance));
@@ -16426,6 +16691,17 @@ function createDashCubeGame() {
     ctx.fillRect(0, floorY, 860, 62);
     ctx.fillStyle = "#46b1ff";
     ctx.fillRect(0, floorY, 860, 8);
+    ctx.fillStyle = player.gravityDir === -1 ? "#ff5fd2" : "#46b1ff";
+    ctx.fillRect(0, 10, 860, 6);
+
+    const stageProgress = (distance % 160) / 160;
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(180, 18, 500, 10);
+    ctx.fillStyle = "#7af0c8";
+    ctx.fillRect(180, 18, 500 * stageProgress, 10);
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(180, 18, 500, 10);
   }
 
   function drawSpike(x, y, width, upsideDown = false) {
@@ -16445,6 +16721,67 @@ function createDashCubeGame() {
 
   function drawPiece(piece) {
     const bounds = pieceBounds(piece);
+    if (piece.kind === "saw") {
+      const cx = bounds.x + bounds.width / 2;
+      const cy = bounds.y + bounds.height / 2;
+      const outer = bounds.width / 2;
+      const inner = outer * 0.56;
+      ctx.fillStyle = "#ff5f7a";
+      ctx.beginPath();
+      for (let index = 0; index < 12; index += 1) {
+        const angle = (Math.PI * 2 * index) / 12 + distance * 0.03;
+        const radius = index % 2 === 0 ? outer : inner;
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#08111f";
+      ctx.beginPath();
+      ctx.arc(cx, cy, outer * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    if (
+      [
+        "portalShip",
+        "portalCube",
+        "portalMini",
+        "portalMaxi",
+        "portalSpeedUp",
+        "portalSpeedDown",
+        "portalGravityUp",
+        "portalGravityDown",
+      ].includes(piece.kind)
+    ) {
+      const color =
+        piece.kind === "portalShip"
+          ? "#46b1ff"
+          : piece.kind === "portalCube"
+            ? "#ffd166"
+            : piece.kind === "portalSpeedUp"
+              ? "#ff8a3d"
+            : piece.kind === "portalSpeedDown"
+                ? "#8f66ff"
+            : piece.kind === "portalGravityUp"
+              ? "#34d399"
+              : piece.kind === "portalGravityDown"
+                ? "#60a5fa"
+            : piece.kind === "portalMini"
+              ? "#ff5fd2"
+              : "#7af0c8";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      ctx.strokeStyle = "rgba(255,255,255,0.28)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bounds.x + 6, bounds.y + 6, bounds.width - 12, bounds.height - 12);
+      ctx.fillStyle = color;
+      ctx.fillRect(bounds.x + bounds.width / 2 - 6, bounds.y + 18, 12, bounds.height - 36);
+      return;
+    }
     if (piece.kind === "block") {
       ctx.fillStyle = "#ff8a3d";
       ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
@@ -16469,6 +16806,28 @@ function createDashCubeGame() {
       ctx.beginPath();
       ctx.arc(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2 + 6, 0, Math.PI * 2);
       ctx.stroke();
+      return;
+    }
+    if (piece.kind === "orbPink") {
+      ctx.fillStyle = piece.used ? "rgba(255, 95, 210, 0.3)" : "#ff5fd2";
+      ctx.beginPath();
+      ctx.arc(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2 + 5, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    if (piece.kind === "coin") {
+      if (piece.taken) return;
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.arc(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, bounds.width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#08111f";
+      ctx.fillRect(bounds.x + bounds.width / 2 - 3, bounds.y + 4, 6, bounds.height - 8);
       return;
     }
     ctx.fillStyle = piece.kind === "roof" ? "#8f66ff" : piece.kind === "triple" ? "#ffd166" : piece.kind === "double" ? "#ff9f5b" : "#ff5f7a";
@@ -16497,13 +16856,29 @@ function createDashCubeGame() {
     });
     ctx.save();
     ctx.translate(player.x + player.size / 2, player.y + player.size / 2);
+    if (player.gravityDir === -1) {
+      ctx.scale(1, -1);
+    }
     ctx.rotate(player.angle);
-    ctx.fillStyle = "#7af0c8";
-    ctx.fillRect(-player.size / 2, -player.size / 2, player.size, player.size);
-    ctx.fillStyle = "#08111f";
-    ctx.fillRect(-9, -6, 6, 6);
-    ctx.fillRect(3, -6, 6, 6);
-    ctx.fillRect(-7, 6, 14, 4);
+    if (player.form === "ship") {
+      ctx.fillStyle = "#7af0c8";
+      ctx.beginPath();
+      ctx.moveTo(player.size / 2, 0);
+      ctx.lineTo(-player.size / 2, -player.size / 2.2);
+      ctx.lineTo(-player.size / 2.8, 0);
+      ctx.lineTo(-player.size / 2, player.size / 2.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#08111f";
+      ctx.fillRect(-2, -4, 8, 8);
+    } else {
+      ctx.fillStyle = "#7af0c8";
+      ctx.fillRect(-player.size / 2, -player.size / 2, player.size, player.size);
+      ctx.fillStyle = "#08111f";
+      ctx.fillRect(-9 * player.scale, -6 * player.scale, 6 * player.scale, 6 * player.scale);
+      ctx.fillRect(3 * player.scale, -6 * player.scale, 6 * player.scale, 6 * player.scale);
+      ctx.fillRect(-7 * player.scale, 6 * player.scale, 14 * player.scale, 4 * player.scale);
+    }
     ctx.restore();
   }
 
@@ -16529,8 +16904,8 @@ function createDashCubeGame() {
       ctx.font = "700 34px Trebuchet MS";
       ctx.fillText("Cube Rush", 430, 142);
       ctx.font = "22px Trebuchet MS";
-      ctx.fillText("Pads bounce, rings boost, and patterns get tighter", 430, 180);
-      ctx.fillText("Press Start, Space, Up, or click to jump", 430, 214);
+      ctx.fillText("Pads bounce, gravity flips, coins reward risk, and portals shift pace and form", 430, 180);
+      ctx.fillText("Press Start, Space, Up, or click to jump, hit rings, or steer the ship", 430, 214);
     }
   }
 
@@ -16551,10 +16926,10 @@ function createDashCubeGame() {
     id: "dash",
     title: "Cube Rush",
     tagline: "Geometry Dash-style cube runner",
-    subtitle: "Auto-run, hit pads and rings, and survive denser obstacle patterns.",
+    subtitle: "Auto-run, flip gravity, chain rings, hit speed portals, and swap through portal sections.",
     description:
-      "A one-button cube runner with jump pads, midair jump rings, platforms, roof spikes, and tighter pattern chains so it feels closer to a rhythm obstacle platformer than a plain endless runner.",
-    controls: "Press Space, Up, W, or click. Jump on the ground, or trigger yellow rings in midair for a second boost.",
+      "A Geometry Dash-style runner with jump pads, pink and yellow rings, saw blades, collectible coins, gravity portals, mini portals, speed portals, and ship portals so the run shifts gravity, form, and pace instead of staying on one obstacle loop.",
+    controls: "Press Space, Up, W, or click. Tap to jump as the cube, trigger pink and yellow rings in midair, flip through gravity portals, and tap repeatedly in ship sections to stay airborne.",
     getLevelText: () => String(stageLevel),
     mount(stage) {
       shell = createCanvasShell({

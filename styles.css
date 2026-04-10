@@ -595,6 +595,11 @@ select {
   border: 1px solid var(--line);
 }
 
+#soundToggleButton[aria-pressed="true"] {
+  background: rgba(30, 185, 128, 0.18);
+  border-color: rgba(30, 185, 128, 0.4);
+}
+
 .status-pill {
   padding: 10px 14px;
   border-radius: 999px;
@@ -620,6 +625,17 @@ select {
   width: min(100%, 860px);
   display: grid;
   gap: 12px;
+}
+
+.dash-level-controls {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  align-items: end;
+}
+
+.dash-level-note {
+  margin: 0;
 }
 
 .canvas-hud,

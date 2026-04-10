@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260410c";
+const BUILD_VERSION = "20260410e";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -143,6 +143,7 @@ const els = {
   heroSubtitle: document.querySelector("#heroSubtitle"),
   startButton: document.querySelector("#startButton"),
   resetButton: document.querySelector("#resetButton"),
+  soundToggleButton: document.querySelector("#soundToggleButton"),
   stageTitle: document.querySelector("#stageTitle"),
   statusPill: document.querySelector("#statusPill"),
   gameStage: document.querySelector("#gameStage"),
@@ -169,10 +170,27 @@ const appState = {
   difficulty: persistedSettings.difficulty,
   startCountdownSeconds: persistedSettings.startCountdownSeconds,
   collapsedCategories: persistedSettings.collapsedCategories,
+  audioMuted: persistedSettings.audioMuted,
   countdownTimerId: null,
   countdownTargetGameId: null,
   countdownRemaining: 0,
   autoResetTimerId: null,
+};
+
+const audioState = {
+  supported: Boolean(window.AudioContext || window.webkitAudioContext),
+  unlocked: false,
+  context: null,
+  masterGain: null,
+  musicGain: null,
+  sfxGain: null,
+  themeTimerId: null,
+  currentTheme: null,
+  currentGameId: null,
+  stepIndex: 0,
+  lastScoreSoundAt: 0,
+  lastStatusSoundAt: 0,
+  lastStatusSignature: "",
 };
 
 const games = {
@@ -252,24 +270,35 @@ function boot() {
 
 function bindEvents() {
   els.startButton.addEventListener("click", () => {
+    unlockAudio();
+    playUiSound("start");
     beginStartCountdown();
   });
 
   els.resetButton.addEventListener("click", () => {
+    unlockAudio();
+    playUiSound("reset");
     clearAutoReset();
     cancelStartCountdown();
     appState.activeGame?.reset();
   });
 
+  els.soundToggleButton?.addEventListener("click", () => {
+    toggleAudio();
+  });
+
   els.difficultySelect?.addEventListener("change", () => {
+    unlockAudio();
     changeDifficulty(els.difficultySelect.value);
   });
 
   els.startDelaySelect?.addEventListener("change", () => {
+    unlockAudio();
     changeStartDelay(els.startDelaySelect.value);
   });
 
   els.quickDifficultySelect?.addEventListener("change", () => {
+    unlockAudio();
     changeDifficulty(els.quickDifficultySelect.value);
   });
 
@@ -296,6 +325,16 @@ function bindEvents() {
 
   window.addEventListener("keyup", (event) => {
     appState.activeGame?.onKeyUp?.(event);
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopGameTheme();
+      return;
+    }
+    if (!appState.audioMuted) {
+      syncGameTheme(true);
+    }
   });
 }
 
@@ -360,7 +399,11 @@ function renderGameList() {
       : "");
 
   els.gameList.querySelectorAll("[data-game-id]").forEach((button) => {
-    button.addEventListener("click", () => selectGame(button.dataset.gameId));
+    button.addEventListener("click", () => {
+      unlockAudio();
+      playUiSound("select");
+      selectGame(button.dataset.gameId);
+    });
   });
   els.gameList.querySelectorAll("[data-category-toggle]").forEach((button) => {
     button.addEventListener("click", () => toggleCategory(button.dataset.categoryToggle));
@@ -392,11 +435,20 @@ function selectGame(gameId) {
   nextGame.mount(els.gameStage);
   nextGame.applySettings?.();
   refreshLevel();
+  syncGameTheme(true);
 }
 
 function setScore(value) {
+  const previous = appState.score;
   appState.score = value;
   els.scoreValue.textContent = String(value);
+  if (value > previous) {
+    const now = performance.now();
+    if (now - audioState.lastScoreSoundAt > 90) {
+      audioState.lastScoreSoundAt = now;
+      playUiSound("score", { delta: value - previous });
+    }
+  }
   if (value > appState.best) {
     appState.best = value;
     highScores[appState.selectedGameId] = value;
@@ -412,6 +464,7 @@ function setBest(value) {
 
 function setStatus(text) {
   els.statusPill.textContent = text;
+  playStatusSound(text);
 }
 
 function clearAutoReset() {
@@ -479,12 +532,14 @@ function cancelStartCountdown() {
 function beginStartCountdown() {
   if (!appState.activeGame || appState.countdownTimerId) return;
   if (appState.startCountdownSeconds <= 0) {
+    syncGameTheme(true);
     appState.activeGame.start();
     return;
   }
   appState.countdownTargetGameId = appState.selectedGameId;
   appState.countdownRemaining = appState.startCountdownSeconds;
   setStatus(`Starting in ${appState.countdownRemaining}`);
+  playUiSound("countdown", { value: appState.countdownRemaining });
   updateStartButtonLabel();
 
   appState.countdownTimerId = window.setInterval(() => {
@@ -494,12 +549,14 @@ function beginStartCountdown() {
       const targetGameId = appState.countdownTargetGameId;
       cancelStartCountdown();
       if (targetGameId === appState.selectedGameId) {
+        syncGameTheme(true);
         appState.activeGame?.start();
       }
       return;
     }
 
     setStatus(`Starting in ${appState.countdownRemaining}`);
+    playUiSound("countdown", { value: appState.countdownRemaining });
     updateStartButtonLabel();
   }, 1000);
 }
@@ -566,19 +623,263 @@ function getDifficultyMode() {
   return appState.difficulty;
 }
 
+function hashString(value) {
+  let hash = 2166136261;
+  for (const char of value) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function createSeededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let next = Math.imul(state ^ (state >>> 15), 1 | state);
+    next ^= next + Math.imul(next ^ (next >>> 7), 61 | next);
+    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function midiToFrequency(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function ensureAudioContext() {
+  if (!audioState.supported) return null;
+  if (!audioState.context) {
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    audioState.context = new AudioCtor();
+    audioState.masterGain = audioState.context.createGain();
+    audioState.musicGain = audioState.context.createGain();
+    audioState.sfxGain = audioState.context.createGain();
+    audioState.masterGain.gain.value = appState.audioMuted ? 0 : 1;
+    audioState.musicGain.gain.value = 0.18;
+    audioState.sfxGain.gain.value = 0.24;
+    audioState.musicGain.connect(audioState.masterGain);
+    audioState.sfxGain.connect(audioState.masterGain);
+    audioState.masterGain.connect(audioState.context.destination);
+  }
+  return audioState.context;
+}
+
+function playTone(frequency, duration, options = {}) {
+  if (!audioState.unlocked || appState.audioMuted) return;
+  const context = ensureAudioContext();
+  if (!context) return;
+  const time = (options.time ?? context.currentTime) + 0.01;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = options.type || "triangle";
+  oscillator.frequency.setValueAtTime(frequency, time);
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.exponentialRampToValueAtTime(options.gain || 0.05, time + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+  oscillator.connect(gain);
+  gain.connect(options.destination || audioState.sfxGain);
+  oscillator.start(time);
+  oscillator.stop(time + duration + 0.02);
+}
+
+function playChord(notes, duration, options = {}) {
+  notes.forEach((note, index) => {
+    playTone(midiToFrequency(note), duration, {
+      ...options,
+      time: (options.time ?? ensureAudioContext()?.currentTime ?? 0) + index * (options.stagger || 0),
+      gain: (options.gain || 0.04) / Math.max(1, notes.length * 0.8),
+    });
+  });
+}
+
+function getGameCategoryIndex(gameId) {
+  const index = GAME_CATEGORIES.findIndex((group) => group.ids.includes(gameId));
+  return index < 0 ? 1 : index;
+}
+
+function createThemeForGame(gameId) {
+  const seed = hashString(gameId);
+  const random = createSeededRandom(seed);
+  const categoryIndex = getGameCategoryIndex(gameId);
+  const scales = [
+    [0, 2, 4, 5, 7, 9, 11],
+    [0, 2, 3, 5, 7, 8, 10],
+    [0, 3, 5, 7, 10],
+    [0, 2, 5, 7, 9],
+  ];
+  const scale = scales[(seed + categoryIndex) % scales.length];
+  const root = 42 + (seed % 10);
+  const leadWave = ["triangle", "square", "sawtooth", "triangle"][(seed >> 3) % 4];
+  const bassWave = ["sine", "triangle", "square"][seed % 3];
+  const stepMs = Math.max(120, 182 - categoryIndex * 12 - (seed % 18));
+  const lead = Array.from({ length: 16 }, (_, index) => {
+    if (random() < (index % 4 === 0 ? 0.08 : 0.22)) return null;
+    return root + 12 + scale[Math.floor(random() * scale.length)];
+  });
+  const bass = Array.from({ length: 8 }, (_, index) => root - 12 + scale[(index + Math.floor(random() * 2)) % scale.length]);
+  const accent = Array.from({ length: 16 }, (_, index) =>
+    index % 4 === 0 || (categoryIndex === 0 && index % 8 === 6) ? root + 24 + scale[(index + 2) % scale.length] : null,
+  );
+  return { stepMs, leadWave, bassWave, lead, bass, accent };
+}
+
+function stopGameTheme() {
+  if (audioState.themeTimerId) {
+    clearInterval(audioState.themeTimerId);
+  }
+  audioState.themeTimerId = null;
+  audioState.currentTheme = null;
+  audioState.currentGameId = null;
+}
+
+function playThemeStep() {
+  if (!audioState.unlocked || appState.audioMuted || !audioState.currentTheme) return;
+  const context = ensureAudioContext();
+  if (!context) return;
+  const theme = audioState.currentTheme;
+  const step = audioState.stepIndex;
+  const time = context.currentTime + 0.03;
+  const leadNote = theme.lead[step % theme.lead.length];
+  const accentNote = theme.accent[step % theme.accent.length];
+  const bassNote = step % 2 === 0 ? theme.bass[Math.floor(step / 2) % theme.bass.length] : null;
+  if (bassNote != null) {
+    playTone(midiToFrequency(bassNote), 0.28, {
+      destination: audioState.musicGain,
+      type: theme.bassWave,
+      gain: 0.045,
+      time,
+    });
+  }
+  if (leadNote != null) {
+    playTone(midiToFrequency(leadNote), 0.18, {
+      destination: audioState.musicGain,
+      type: theme.leadWave,
+      gain: 0.035,
+      time,
+    });
+  }
+  if (accentNote != null) {
+    playTone(midiToFrequency(accentNote), 0.08, {
+      destination: audioState.musicGain,
+      type: "square",
+      gain: 0.018,
+      time,
+    });
+  }
+  audioState.stepIndex += 1;
+}
+
+function syncGameTheme(force = false) {
+  if (!audioState.unlocked || appState.audioMuted || !audioState.supported) return;
+  const context = ensureAudioContext();
+  if (!context || !appState.selectedGameId) return;
+  if (!force && audioState.currentGameId === appState.selectedGameId && audioState.themeTimerId) return;
+  stopGameTheme();
+  audioState.currentGameId = appState.selectedGameId;
+  audioState.currentTheme = createThemeForGame(appState.selectedGameId);
+  audioState.stepIndex = 0;
+  playThemeStep();
+  audioState.themeTimerId = window.setInterval(playThemeStep, audioState.currentTheme.stepMs);
+}
+
+function unlockAudio() {
+  if (!audioState.supported) {
+    updateAudioUi();
+    return;
+  }
+  const context = ensureAudioContext();
+  if (!context) return;
+  audioState.unlocked = true;
+  if (context.state === "suspended") {
+    context.resume().catch(() => {});
+  }
+  if (!appState.audioMuted) {
+    syncGameTheme(true);
+  }
+  updateAudioUi();
+}
+
+function setAudioMuted(value) {
+  appState.audioMuted = Boolean(value);
+  persistSettings();
+  updateAudioUi();
+  if (!audioState.context) return;
+  audioState.masterGain.gain.cancelScheduledValues(audioState.context.currentTime);
+  audioState.masterGain.gain.setTargetAtTime(appState.audioMuted ? 0.0001 : 1, audioState.context.currentTime, 0.02);
+  if (appState.audioMuted) {
+    stopGameTheme();
+  } else {
+    syncGameTheme(true);
+  }
+}
+
+function toggleAudio() {
+  if (!audioState.supported) return;
+  if (appState.audioMuted) {
+    unlockAudio();
+    setAudioMuted(false);
+    playChord([64, 67, 71], 0.14, { gain: 0.07, stagger: 0.03 });
+    return;
+  }
+  playTone(midiToFrequency(57), 0.12, { gain: 0.05, type: "triangle" });
+  setAudioMuted(true);
+}
+
+function playUiSound(kind, payload = {}) {
+  if (!audioState.unlocked || appState.audioMuted) return;
+  if (kind === "select") {
+    playTone(midiToFrequency(72), 0.08, { gain: 0.04, type: "triangle" });
+    playTone(midiToFrequency(79), 0.08, { gain: 0.028, type: "triangle", time: ensureAudioContext().currentTime + 0.05 });
+    return;
+  }
+  if (kind === "start") {
+    playChord([60, 64, 67], 0.16, { gain: 0.08, stagger: 0.035 });
+    return;
+  }
+  if (kind === "reset") {
+    playChord([67, 64, 60], 0.14, { gain: 0.06, stagger: 0.03, type: "triangle" });
+    return;
+  }
+  if (kind === "countdown") {
+    playTone(midiToFrequency(72 + (payload.value || 0)), 0.06, { gain: 0.038, type: "square" });
+    return;
+  }
+  if (kind === "score") {
+    playTone(midiToFrequency(76 + Math.min(8, payload.delta || 1)), 0.07, { gain: 0.032, type: "square" });
+  }
+}
+
+function playStatusSound(text) {
+  if (!audioState.unlocked || appState.audioMuted) return;
+  const signature = String(text || "").toLowerCase().trim();
+  if (!signature) return;
+  const now = performance.now();
+  if (audioState.lastStatusSignature === signature && now - audioState.lastStatusSoundAt < 300) return;
+  audioState.lastStatusSignature = signature;
+  audioState.lastStatusSoundAt = now;
+  if (/(cleared|you win|correct|jackpot|finished|copied|all stages)/.test(signature)) {
+    playChord([67, 71, 74], 0.16, { gain: 0.07, stagger: 0.03 });
+    return;
+  }
+  if (/(boom|crash|crashed|game over|failed|too slow|too early|out of|lost|locked out|could not|tagged|scraped|clipped)/.test(signature)) {
+    playChord([55, 52, 48], 0.18, { gain: 0.06, stagger: 0.035, type: "triangle" });
+  }
+}
+
 function loadSettings() {
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     return {
       difficulty: normalizeDifficulty(parsed.difficulty),
       startCountdownSeconds: normalizeStartDelay(parsed.startCountdownSeconds),
+      audioMuted: Boolean(parsed.audioMuted),
       collapsedCategories:
         parsed.collapsedCategories && typeof parsed.collapsedCategories === "object"
           ? parsed.collapsedCategories
           : {},
     };
   } catch (error) {
-    return { difficulty: "normal", startCountdownSeconds: 3, collapsedCategories: {} };
+    return { difficulty: "normal", startCountdownSeconds: 3, audioMuted: false, collapsedCategories: {} };
   }
 }
 
@@ -588,6 +889,7 @@ function persistSettings() {
     JSON.stringify({
       difficulty: appState.difficulty,
       startCountdownSeconds: appState.startCountdownSeconds,
+      audioMuted: appState.audioMuted,
       collapsedCategories: appState.collapsedCategories,
     }),
   );
@@ -607,6 +909,19 @@ function updateSettingsUi() {
   if (els.difficultyHint) {
     els.difficultyHint.textContent = `${preset.label}: ${preset.blurb}`;
   }
+  updateAudioUi();
+}
+
+function updateAudioUi() {
+  if (!els.soundToggleButton) return;
+  if (!audioState.supported) {
+    els.soundToggleButton.textContent = "Sound N/A";
+    els.soundToggleButton.disabled = true;
+    return;
+  }
+  els.soundToggleButton.disabled = false;
+  els.soundToggleButton.textContent = appState.audioMuted ? "Sound Off" : "Sound On";
+  els.soundToggleButton.setAttribute("aria-pressed", String(!appState.audioMuted));
 }
 
 function updateBuildInfo() {
@@ -16204,6 +16519,53 @@ function createDashCubeGame() {
   let portalCooldown = 0;
   let speedModifier = 1;
   let coinsCollected = 0;
+  let selectedCourseId = "endless";
+  let courseSpawnIndex = 0;
+  let levelCompleted = false;
+  let courseSelect;
+  let courseNoteEl;
+  const courses = {
+    endless: {
+      id: "endless",
+      label: "Endless",
+      note: "Random endless run with all mechanics mixed together.",
+      sequence: null,
+    },
+    stereo: {
+      id: "stereo",
+      label: "Stereo Start",
+      note: "An intro course with cube jumps, pads, rings, and basic saw reads.",
+      sequence: ["padDuo", "blockOrb", "roofWeave", "padDuo", "sawPad", "doublePair", "tripleRise", "roofWeave", "sawPad", "tripleRise"],
+    },
+    portal: {
+      id: "portal",
+      label: "Portal Pulse",
+      note: "A fixed route focused on mini, speed, and ship portal transitions.",
+      sequence: ["padDuo", "miniMix", "blockOrb", "shipSprint", "doublePair", "miniMix", "speedCube", "shipSprint"],
+    },
+    gravity: {
+      id: "gravity",
+      label: "Gravity Panic",
+      note: "Ceiling sections, gravity flips, and tighter recovery timing.",
+      sequence: ["padDuo", "gravityFlip", "roofWeave", "gravityFlip", "blockOrb", "gravityFlip", "doublePair", "tripleRise"],
+    },
+    gauntlet: {
+      id: "gauntlet",
+      label: "Neon Gauntlet",
+      note: "The hardest fixed route with speed, gravity, ship, mini, and saw pressure.",
+      sequence: ["padDuo", "sawPad", "miniMix", "gravityFlip", "shipSprint", "speedCube", "gravityFlip", "miniMix", "shipSprint", "tripleRise"],
+    },
+  };
+
+  function getSelectedCourse() {
+    return courses[selectedCourseId] || courses.endless;
+  }
+
+  function updateCourseUi() {
+    const course = getSelectedCourse();
+    if (courseSelect) courseSelect.value = selectedCourseId;
+    if (courseNoteEl) courseNoteEl.textContent = course.note;
+  }
 
   function getConfig() {
     const mode = appState.difficulty;
@@ -16263,8 +16625,11 @@ function createDashCubeGame() {
     portalCooldown = 0;
     speedModifier = 1;
     coinsCollected = 0;
+    courseSpawnIndex = 0;
+    levelCompleted = false;
     setScore(0);
     resetPlayer();
+    updateCourseUi();
     draw();
   }
 
@@ -16273,12 +16638,8 @@ function createDashCubeGame() {
     jumpQueued = true;
   }
 
-  function makePattern() {
-    const config = getConfig();
-    const speed = config.speed + stageLevel * 0.18;
-    const startX = 900;
-    const roll = Math.random();
-    if (roll < 0.14 && stageLevel >= 8) {
+  function buildPattern(type, startX, speed) {
+    if (type === "shipSprint") {
       return [
         { kind: "portalSpeedUp", x: startX - 18, width: 28, height: 92, speed },
         { kind: "portalShip", x: startX + 8, width: 30, height: 96, speed },
@@ -16291,7 +16652,7 @@ function createDashCubeGame() {
         { kind: "double", x: startX + 382, width: 54, height: 34, speed },
       ];
     }
-    if (roll < 0.26 && stageLevel >= 7) {
+    if (type === "gravityFlip") {
       return [
         { kind: "portalGravityUp", x: startX, width: 30, height: 96, speed },
         { kind: "roof", x: startX + 58, width: 38, height: 30, speed },
@@ -16303,7 +16664,7 @@ function createDashCubeGame() {
         { kind: "double", x: startX + 374, width: 54, height: 34, speed },
       ];
     }
-    if (roll < 0.42 && stageLevel >= 6) {
+    if (type === "miniMix") {
       return [
         { kind: "portalMini", x: startX, width: 28, height: 92, speed },
         { kind: "double", x: startX + 70, width: 54, height: 34, speed },
@@ -16315,7 +16676,7 @@ function createDashCubeGame() {
         { kind: "triple", x: startX + 320, width: 80, height: 34, speed },
       ];
     }
-    if (roll < 0.56 && stageLevel >= 5) {
+    if (type === "sawPad") {
       return [
         { kind: "pad", x: startX, width: 36, height: 12, speed, used: false },
         { kind: "saw", x: startX + 70, y: floorY - 74, width: 30, height: 30, speed },
@@ -16325,41 +16686,68 @@ function createDashCubeGame() {
         { kind: "spike", x: startX + 236, width: 34, height: 34, speed },
       ];
     }
-    if (roll < 0.72 && stageLevel >= 2) {
+    if (type === "padDuo") {
       return [
         { kind: "pad", x: startX, width: 36, height: 12, speed, used: false },
         { kind: "spike", x: startX + 64, width: 34, height: 34, speed },
         { kind: "double", x: startX + 116, width: 54, height: 34, speed },
       ];
     }
-    if (roll < 0.82 && stageLevel >= 3) {
+    if (type === "blockOrb") {
       return [
         { kind: "block", x: startX, width: 62, height: 54, speed },
         { kind: "orb", x: startX + 86, y: floorY - 126, width: 26, height: 26, speed, used: false },
         { kind: "spike", x: startX + 142, width: 34, height: 34, speed },
       ];
     }
-    if (roll < 0.92 && stageLevel >= 4) {
+    if (type === "roofWeave") {
       return [
         { kind: "roof", x: startX + 24, width: 38, height: 30, speed },
         { kind: "spike", x: startX + 92, width: 34, height: 34, speed },
         { kind: "roof", x: startX + 162, width: 38, height: 30, speed },
       ];
     }
-    if (roll < 0.98 && stageLevel >= 5) {
+    if (type === "tripleRise") {
       return [
         { kind: "triple", x: startX, width: 80, height: 34, speed },
         { kind: "orb", x: startX + 118, y: floorY - 110, width: 26, height: 26, speed, used: false },
         { kind: "block", x: startX + 176, width: 54, height: 42, speed },
       ];
     }
-    if (roll < 0.995) {
+    if (type === "speedCube") {
+      return [
+        { kind: "portalSpeedUp", x: startX + 8, width: 28, height: 92, speed },
+        { kind: "double", x: startX + 64, width: 54, height: 34, speed },
+        { kind: "orbPink", x: startX + 134, y: floorY - 96, width: 24, height: 24, speed, used: false },
+        { kind: "saw", x: startX + 182, y: floorY - 84, width: 34, height: 34, speed },
+        { kind: "portalSpeedDown", x: startX + 240, width: 28, height: 92, speed },
+        { kind: "triple", x: startX + 300, width: 80, height: 34, speed },
+      ];
+    }
+    if (type === "doublePair") {
       return [
         { kind: "double", x: startX, width: 54, height: 34, speed },
         { kind: "spike", x: startX + 84, width: 34, height: 34, speed },
       ];
     }
     return [{ kind: "spike", x: startX, width: 34, height: 34, speed }];
+  }
+
+  function makePattern() {
+    const config = getConfig();
+    const speed = config.speed + stageLevel * 0.18;
+    const startX = 900;
+    const roll = Math.random();
+    if (roll < 0.14 && stageLevel >= 8) return buildPattern("shipSprint", startX, speed);
+    if (roll < 0.26 && stageLevel >= 7) return buildPattern("gravityFlip", startX, speed);
+    if (roll < 0.42 && stageLevel >= 6) return buildPattern("miniMix", startX, speed);
+    if (roll < 0.56 && stageLevel >= 5) return buildPattern("sawPad", startX, speed);
+    if (roll < 0.72 && stageLevel >= 2) return buildPattern("padDuo", startX, speed);
+    if (roll < 0.82 && stageLevel >= 3) return buildPattern("blockOrb", startX, speed);
+    if (roll < 0.92 && stageLevel >= 4) return buildPattern("roofWeave", startX, speed);
+    if (roll < 0.98 && stageLevel >= 5) return buildPattern("tripleRise", startX, speed);
+    if (roll < 0.995) return buildPattern("doublePair", startX, speed);
+    return buildPattern("spike", startX, speed);
   }
 
   function patternRightEdge(piece) {
@@ -16370,6 +16758,14 @@ function createDashCubeGame() {
     const config = getConfig();
     const last = pieces[pieces.length - 1];
     if (last && 900 - patternRightEdge(last) < Math.max(42, config.gap - stageLevel * 2) + Math.random() * 34) return;
+    const speed = config.speed + stageLevel * 0.18;
+    const course = getSelectedCourse();
+    if (course.sequence) {
+      if (courseSpawnIndex >= course.sequence.length) return;
+      pieces.push(...buildPattern(course.sequence[courseSpawnIndex], 900, speed));
+      courseSpawnIndex += 1;
+      return;
+    }
     pieces.push(...makePattern());
   }
 
@@ -16443,9 +16839,10 @@ function createDashCubeGame() {
   }
 
   function updateHud() {
+    const course = getSelectedCourse();
     shell.hud.distance.textContent = `Distance ${Math.floor(distance)}m`;
     shell.hud.mode.textContent = `${player.form === "ship" ? "Ship" : "Cube"}${player.scale < 1 ? " Mini" : ""} • ${player.gravityDir === -1 ? "Upside" : "Normal"} • x${speedModifier.toFixed(1)}`;
-    shell.hud.level.textContent = `Level ${stageLevel} • Coins ${coinsCollected}`;
+    shell.hud.level.textContent = `${course.sequence ? course.label : `Level ${stageLevel}`} • Coins ${coinsCollected}`;
     refreshLevel();
   }
 
@@ -16652,6 +17049,16 @@ function createDashCubeGame() {
       return;
     }
 
+    const course = getSelectedCourse();
+    if (course.sequence && courseSpawnIndex >= course.sequence.length && pieces.length === 0) {
+      running = false;
+      levelCompleted = true;
+      setScore(appState.score + 400 + coinsCollected * 25);
+      setStatus(`${course.label} cleared`);
+      draw();
+      return;
+    }
+
     if (flashTimer > 0) flashTimer -= 1;
     distance += (config.speed + stageLevel * 0.18) * speedModifier * 0.16;
     player.trail.push({ x: player.x + player.size / 2, y: player.y + player.size / 2 });
@@ -16694,7 +17101,10 @@ function createDashCubeGame() {
     ctx.fillStyle = player.gravityDir === -1 ? "#ff5fd2" : "#46b1ff";
     ctx.fillRect(0, 10, 860, 6);
 
-    const stageProgress = (distance % 160) / 160;
+    const course = getSelectedCourse();
+    const stageProgress = course.sequence
+      ? clamp(distance / Math.max(1, course.sequence.length * 175), 0, 1)
+      : (distance % 160) / 160;
     ctx.fillStyle = "rgba(255,255,255,0.18)";
     ctx.fillRect(180, 18, 500, 10);
     ctx.fillStyle = "#7af0c8";
@@ -16902,10 +17312,16 @@ function createDashCubeGame() {
       ctx.fillStyle = "white";
       ctx.textAlign = "center";
       ctx.font = "700 34px Trebuchet MS";
-      ctx.fillText("Cube Rush", 430, 142);
+      ctx.fillText(levelCompleted ? `${getSelectedCourse().label} Cleared` : "Cube Rush", 430, 142);
       ctx.font = "22px Trebuchet MS";
-      ctx.fillText("Pads bounce, gravity flips, coins reward risk, and portals shift pace and form", 430, 180);
-      ctx.fillText("Press Start, Space, Up, or click to jump, hit rings, or steer the ship", 430, 214);
+      ctx.fillText(getSelectedCourse().label, 430, 180);
+      ctx.fillText(
+        levelCompleted
+          ? "Press Start to replay this course or switch to another level"
+          : "Press Start, Space, Up, or click to jump, hit rings, or steer the ship",
+        430,
+        214,
+      );
     }
   }
 
@@ -16941,17 +17357,41 @@ function createDashCubeGame() {
       });
       stage.innerHTML = "";
       stage.appendChild(shell.wrap);
+      const controls = document.createElement("div");
+      controls.className = "dash-level-controls";
+      controls.innerHTML = `
+        <label class="field-group">
+          <span class="field-label">Course</span>
+          <select class="field-control" data-dash-course>
+            ${Object.values(courses)
+              .map((course) => `<option value="${course.id}">${escapeHtml(course.label)}</option>`)
+              .join("")}
+          </select>
+        </label>
+        <p class="muted compact-copy dash-level-note" data-dash-note></p>
+      `;
+      shell.wrap.insertBefore(controls, shell.wrap.querySelector(".canvas-card"));
       shell.canvas.width = 860;
       shell.canvas.height = 360;
       ctx = shell.canvas.getContext("2d");
+      courseSelect = shell.wrap.querySelector("[data-dash-course]");
+      courseNoteEl = shell.wrap.querySelector("[data-dash-note]");
+      courseSelect.addEventListener("change", () => {
+        selectedCourseId = courses[courseSelect.value] ? courseSelect.value : "endless";
+        resetState();
+        setStatus(`${getSelectedCourse().label} ready`);
+      });
       shell.canvas.addEventListener("pointerdown", queueJump);
       resetState();
     },
     start() {
       if (running) return;
+      if (levelCompleted) {
+        resetState();
+      }
       clearAutoReset();
       running = true;
-      setStatus("Jump cleanly");
+      setStatus(`${getSelectedCourse().label} live`);
       frame();
     },
     reset() {

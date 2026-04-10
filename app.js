@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260410k";
+const BUILD_VERSION = "20260410m";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -443,7 +443,7 @@ function setScore(value) {
   const previous = appState.score;
   appState.score = value;
   els.scoreValue.textContent = String(value);
-  if (value > previous) {
+  if (value > previous && !appState.activeGame?.muteScoreChime) {
     const now = performance.now();
     if (now - audioState.lastScoreSoundAt > 90) {
       audioState.lastScoreSoundAt = now;
@@ -656,7 +656,7 @@ function ensureAudioContext() {
     audioState.musicGain = audioState.context.createGain();
     audioState.sfxGain = audioState.context.createGain();
     audioState.masterGain.gain.value = appState.audioMuted ? 0 : 1;
-    audioState.musicGain.gain.value = 0.18;
+    audioState.musicGain.gain.value = 0.145;
     audioState.sfxGain.gain.value = 0.24;
     audioState.musicGain.connect(audioState.masterGain);
     audioState.sfxGain.connect(audioState.masterGain);
@@ -693,35 +693,233 @@ function playChord(notes, duration, options = {}) {
   });
 }
 
+function playLayeredTone(frequency, duration, options = {}) {
+  if (!audioState.unlocked || appState.audioMuted) return;
+  const context = ensureAudioContext();
+  if (!context) return;
+  const time = (options.time ?? context.currentTime) + 0.01;
+  const destination = options.destination || audioState.musicGain;
+  const attack = options.attack ?? 0.02;
+  const peak = options.gain ?? 0.04;
+  const sustain = options.sustain ?? Math.max(0.0001, peak * 0.7);
+  const release = options.release ?? Math.min(0.24, duration * 0.45);
+  const endTime = time + duration;
+  const filter = context.createBiquadFilter();
+  filter.type = options.filterType || "lowpass";
+  filter.frequency.setValueAtTime(options.filterFrequency || 1800, time);
+  if (options.filterQ) {
+    filter.Q.setValueAtTime(options.filterQ, time);
+  }
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(peak, time + attack);
+  gain.gain.linearRampToValueAtTime(sustain, Math.max(time + attack + 0.02, endTime - release));
+  gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+  filter.connect(gain);
+  gain.connect(destination);
+
+  const voices =
+    options.voices || [
+      { type: options.type || "triangle", detune: 0, gain: 1 },
+      { type: options.type2 || "sine", detune: 7, gain: 0.42 },
+    ];
+
+  voices.forEach((voice) => {
+    const oscillator = context.createOscillator();
+    oscillator.type = voice.type || "triangle";
+    oscillator.frequency.setValueAtTime(frequency * (voice.ratio || 1), time);
+    oscillator.detune.setValueAtTime(voice.detune || 0, time);
+    oscillator.connect(filter);
+    oscillator.start(time);
+    oscillator.stop(endTime + 0.03);
+  });
+}
+
+function playLayeredChord(notes, duration, options = {}) {
+  notes.forEach((note, index) => {
+    playLayeredTone(midiToFrequency(note), duration, {
+      ...options,
+      time: (options.time ?? ensureAudioContext()?.currentTime ?? 0) + index * (options.strum || 0),
+      gain: (options.gain || 0.05) / Math.max(1, notes.length * 0.9),
+    });
+  });
+}
+
+function playKick(time, gain = 0.045) {
+  if (!audioState.unlocked || appState.audioMuted) return;
+  const context = ensureAudioContext();
+  if (!context) return;
+  const oscillator = context.createOscillator();
+  const amp = context.createGain();
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(124, time);
+  oscillator.frequency.exponentialRampToValueAtTime(42, time + 0.16);
+  amp.gain.setValueAtTime(0.0001, time);
+  amp.gain.exponentialRampToValueAtTime(gain, time + 0.008);
+  amp.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+  oscillator.connect(amp);
+  amp.connect(audioState.musicGain);
+  oscillator.start(time);
+  oscillator.stop(time + 0.2);
+}
+
+function playHat(time, gain = 0.012) {
+  playLayeredTone(4800, 0.035, {
+    time,
+    gain,
+    sustain: gain * 0.35,
+    release: 0.02,
+    filterType: "highpass",
+    filterFrequency: 3800,
+    voices: [
+      { type: "square", detune: -14, gain: 1 },
+      { type: "square", detune: 11, gain: 0.7 },
+      { type: "triangle", detune: 23, gain: 0.3 },
+    ],
+  });
+}
+
+function playSnare(time, gain = 0.022) {
+  playLayeredTone(210, 0.11, {
+    time,
+    gain,
+    attack: 0.002,
+    sustain: gain * 0.32,
+    release: 0.07,
+    filterType: "bandpass",
+    filterFrequency: 1600,
+    filterQ: 0.7,
+    voices: [
+      { type: "triangle", detune: 0, gain: 1 },
+      { type: "square", detune: 17, gain: 0.5 },
+      { type: "square", ratio: 12, detune: -9, gain: 0.28 },
+    ],
+  });
+}
+
 function getGameCategoryIndex(gameId) {
   const index = GAME_CATEGORIES.findIndex((group) => group.ids.includes(gameId));
   return index < 0 ? 1 : index;
+}
+
+function getScaleNote(root, scale, degree, octave = 0) {
+  const normalized = degree % scale.length;
+  const wrapped = normalized < 0 ? normalized + scale.length : normalized;
+  const octaves = octave + Math.floor(degree / scale.length) + (degree < 0 && wrapped !== normalized ? -1 : 0);
+  return root + scale[wrapped] + octaves * 12;
+}
+
+function getChordNotes(root, scale, degree, voicing = "triad") {
+  const base = [
+    getScaleNote(root, scale, degree, 0),
+    getScaleNote(root, scale, degree + 2, 0),
+    getScaleNote(root, scale, degree + 4, 0),
+  ];
+  if (voicing === "seventh") {
+    base.push(getScaleNote(root, scale, degree + 6, 0));
+  }
+  return base;
 }
 
 function createThemeForGame(gameId) {
   const seed = hashString(gameId);
   const random = createSeededRandom(seed);
   const categoryIndex = getGameCategoryIndex(gameId);
-  const scales = [
+  const scaleSets = [
     [0, 2, 4, 5, 7, 9, 11],
     [0, 2, 3, 5, 7, 8, 10],
+    [0, 2, 3, 5, 7, 9, 10],
     [0, 3, 5, 7, 10],
-    [0, 2, 5, 7, 9],
   ];
-  const scale = scales[(seed + categoryIndex) % scales.length];
-  const root = 42 + (seed % 10);
-  const leadWave = ["triangle", "square", "sawtooth", "triangle"][(seed >> 3) % 4];
-  const bassWave = ["sine", "triangle", "square"][seed % 3];
-  const stepMs = Math.max(120, 182 - categoryIndex * 12 - (seed % 18));
-  const lead = Array.from({ length: 16 }, (_, index) => {
-    if (random() < (index % 4 === 0 ? 0.08 : 0.22)) return null;
-    return root + 12 + scale[Math.floor(random() * scale.length)];
+  const profiles = [
+    {
+      bpmRange: [126, 142],
+      leadVoices: [{ type: "triangle", detune: 0, gain: 1 }, { type: "sawtooth", detune: 6, gain: 0.24 }],
+      bassVoices: [{ type: "sine", detune: 0, gain: 1 }, { type: "triangle", detune: -7, gain: 0.18 }],
+      padVoices: [{ type: "triangle", detune: -5, gain: 1 }, { type: "sawtooth", detune: 5, gain: 0.4 }],
+      progressions: [
+        [0, 4, 5, 3],
+        [0, 5, 3, 4],
+      ],
+      leadDensity: 0.74,
+      hatDensity: 0.78,
+      syncopation: 0.58,
+    },
+    {
+      bpmRange: [112, 130],
+      leadVoices: [{ type: "triangle", detune: 0, gain: 1 }, { type: "square", detune: 5, gain: 0.16 }],
+      bassVoices: [{ type: "sine", detune: 0, gain: 1 }, { type: "triangle", detune: 4, gain: 0.14 }],
+      padVoices: [{ type: "triangle", detune: -4, gain: 1 }, { type: "triangle", detune: 4, gain: 0.5 }],
+      progressions: [
+        [0, 3, 4, 2],
+        [0, 5, 4, 3],
+      ],
+      leadDensity: 0.62,
+      hatDensity: 0.62,
+      syncopation: 0.42,
+    },
+    {
+      bpmRange: [104, 122],
+      leadVoices: [{ type: "triangle", detune: 0, gain: 1 }, { type: "sine", detune: 9, gain: 0.28 }],
+      bassVoices: [{ type: "sine", detune: 0, gain: 1 }, { type: "square", detune: -5, gain: 0.11 }],
+      padVoices: [{ type: "triangle", detune: -6, gain: 1 }, { type: "square", detune: 6, gain: 0.24 }],
+      progressions: [
+        [0, 5, 4, 3],
+        [0, 3, 5, 4],
+      ],
+      leadDensity: 0.56,
+      hatDensity: 0.48,
+      syncopation: 0.35,
+    },
+  ];
+  const profile = profiles[categoryIndex] || profiles[1];
+  const scale = scaleSets[(seed + categoryIndex) % scaleSets.length];
+  const root = 38 + (seed % 12);
+  const bpmMin = profile.bpmRange[0];
+  const bpmMax = profile.bpmRange[1];
+  const bpm = bpmMin + (seed % Math.max(1, bpmMax - bpmMin));
+  const stepMs = Math.round(60000 / bpm / 4);
+  const progression = profile.progressions[seed % profile.progressions.length];
+  const loopSteps = progression.length * 16;
+  const melodyPattern = Array.from({ length: loopSteps }, (_, step) => {
+    const bar = Math.floor(step / 16);
+    const stepInBar = step % 16;
+    const isAnchor = [0, 3, 6, 8, 10, 12, 14].includes(stepInBar);
+    const isPickup = [2, 7, 11, 15].includes(stepInBar);
+    if (!isAnchor && !(isPickup && random() < profile.syncopation)) return null;
+    if (random() > profile.leadDensity) return null;
+    const chordDegree = progression[bar];
+    const degrees = random() < 0.65 ? [0, 2, 4, 6] : [1, 3, 5];
+    const offset = degrees[Math.floor(random() * degrees.length)];
+    const octave = stepInBar >= 8 ? 2 : 1;
+    return getScaleNote(root, scale, chordDegree + offset, octave);
   });
-  const bass = Array.from({ length: 8 }, (_, index) => root - 12 + scale[(index + Math.floor(random() * 2)) % scale.length]);
-  const accent = Array.from({ length: 16 }, (_, index) =>
-    index % 4 === 0 || (categoryIndex === 0 && index % 8 === 6) ? root + 24 + scale[(index + 2) % scale.length] : null,
-  );
-  return { stepMs, leadWave, bassWave, lead, bass, accent };
+  const arpPattern = Array.from({ length: loopSteps }, (_, step) => {
+    const stepInBar = step % 16;
+    if (stepInBar % 2 !== 1) return null;
+    const chordDegree = progression[Math.floor(step / 16)];
+    const chord = getChordNotes(root, scale, chordDegree, "seventh");
+    return chord[(stepInBar / 2) % chord.length] + 12;
+  });
+  const humanize = Array.from({ length: loopSteps }, () => (random() - 0.5) * 0.018);
+  const velocity = Array.from({ length: loopSteps }, () => 0.88 + random() * 0.24);
+  return {
+    stepMs,
+    swingSeconds: stepMs / 1000 * 0.12,
+    root,
+    scale,
+    progression,
+    loopSteps,
+    melodyPattern,
+    arpPattern,
+    humanize,
+    velocity,
+    leadVoices: profile.leadVoices,
+    bassVoices: profile.bassVoices,
+    padVoices: profile.padVoices,
+    hatDensity: profile.hatDensity,
+    syncopation: profile.syncopation,
+  };
 }
 
 function stopGameTheme() {
@@ -811,34 +1009,92 @@ function playThemeStep() {
   if (!context) return;
   const theme = audioState.currentTheme;
   const step = audioState.stepIndex;
-  const time = context.currentTime + 0.03;
-  const leadNote = theme.lead[step % theme.lead.length];
-  const accentNote = theme.accent[step % theme.accent.length];
-  const bassNote = step % 2 === 0 ? theme.bass[Math.floor(step / 2) % theme.bass.length] : null;
-  if (bassNote != null) {
-    playTone(midiToFrequency(bassNote), 0.28, {
-      destination: audioState.musicGain,
-      type: theme.bassWave,
-      gain: 0.045,
+  const loopStep = step % theme.loopSteps;
+  const bar = Math.floor(loopStep / 16);
+  const stepInBar = loopStep % 16;
+  const time =
+    context.currentTime +
+    0.03 +
+    theme.humanize[loopStep] +
+    (stepInBar % 2 === 1 ? theme.swingSeconds : 0);
+  const chordDegree = theme.progression[bar];
+  const chord = getChordNotes(theme.root, theme.scale, chordDegree, "seventh");
+  const bassRoot = chord[0] - 12;
+  const melodyNote = theme.melodyPattern[loopStep];
+  const arpNote = theme.arpPattern[loopStep];
+  const velocity = theme.velocity[loopStep];
+
+  if (stepInBar === 0) {
+    playLayeredChord(
+      chord.map((note, index) => note + (index < 2 ? 0 : 12)),
+      theme.stepMs / 1000 * 15.2,
+      {
+        time,
+        gain: 0.04,
+        attack: 0.05,
+        sustain: 0.018,
+        release: 0.22,
+        filterType: "lowpass",
+        filterFrequency: 1450,
+        voices: theme.padVoices,
+        strum: 0.012,
+      },
+    );
+  }
+
+  if (stepInBar === 0 || stepInBar === 8 || (stepInBar === 11 && theme.syncopation > 0.5)) {
+    playKick(time, 0.04 + velocity * 0.006);
+  }
+  if (stepInBar === 4 || stepInBar === 12) {
+    playSnare(time, 0.02 + velocity * 0.003);
+  }
+  if ((stepInBar % 2 === 0 && Math.random() < theme.hatDensity) || stepInBar === 15) {
+    playHat(time, 0.01 + velocity * 0.003);
+  }
+
+  if (stepInBar === 0 || stepInBar === 6 || stepInBar === 8 || stepInBar === 14) {
+    const bassOffset = stepInBar === 6 || stepInBar === 14 ? 7 : 0;
+    playLayeredTone(midiToFrequency(bassRoot + bassOffset), 0.23, {
       time,
+      gain: 0.038 + velocity * 0.004,
+      attack: 0.01,
+      sustain: 0.02,
+      release: 0.08,
+      filterType: "lowpass",
+      filterFrequency: 520,
+      voices: theme.bassVoices,
     });
   }
-  if (leadNote != null) {
-    playTone(midiToFrequency(leadNote), 0.18, {
-      destination: audioState.musicGain,
-      type: theme.leadWave,
-      gain: 0.035,
+
+  if (arpNote != null && stepInBar % 4 !== 3) {
+    playLayeredTone(midiToFrequency(arpNote), 0.11, {
       time,
+      gain: 0.018 + velocity * 0.003,
+      attack: 0.008,
+      sustain: 0.008,
+      release: 0.05,
+      filterType: "lowpass",
+      filterFrequency: 2100,
+      voices: [
+        { type: "triangle", detune: -4, gain: 1 },
+        { type: "triangle", detune: 4, gain: 0.42 },
+      ],
     });
   }
-  if (accentNote != null) {
-    playTone(midiToFrequency(accentNote), 0.08, {
-      destination: audioState.musicGain,
-      type: "square",
-      gain: 0.018,
+
+  if (melodyNote != null) {
+    playLayeredTone(midiToFrequency(melodyNote), stepInBar % 4 === 0 ? 0.22 : 0.14, {
       time,
+      gain: 0.026 + velocity * 0.004,
+      attack: 0.012,
+      sustain: 0.015,
+      release: 0.08,
+      filterType: "lowpass",
+      filterFrequency: 1850 + (stepInBar % 8) * 70,
+      voices: theme.leadVoices,
     });
   }
+
   audioState.stepIndex += 1;
 }
 
@@ -17635,6 +17891,7 @@ function createDashCubeGame() {
 
   return {
     id: "dash",
+    muteScoreChime: true,
     title: "Cube Rush",
     tagline: "Geometry Dash-style cube runner",
     subtitle: "Auto-run, flip gravity, chain rings, hit speed portals, and swap through portal sections.",

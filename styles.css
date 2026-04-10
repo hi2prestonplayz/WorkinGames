@@ -630,12 +630,18 @@ select {
 .dash-level-controls {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
-  align-items: end;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
 }
 
-.dash-level-note {
+.dash-level-note,
+.dash-track-note {
   margin: 0;
+  grid-column: 1 / -1;
+}
+
+.dash-track-button {
+  align-self: end;
 }
 
 .canvas-hud,

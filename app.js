@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260410f";
+const BUILD_VERSION = "20260410k";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -191,6 +191,7 @@ const audioState = {
   lastScoreSoundAt: 0,
   lastStatusSoundAt: 0,
   lastStatusSignature: "",
+  customTracks: {},
 };
 
 const games = {
@@ -727,9 +728,81 @@ function stopGameTheme() {
   if (audioState.themeTimerId) {
     clearInterval(audioState.themeTimerId);
   }
+  if (audioState.currentGameId && audioState.customTracks[audioState.currentGameId]) {
+    audioState.customTracks[audioState.currentGameId].element.pause();
+  }
   audioState.themeTimerId = null;
   audioState.currentTheme = null;
   audioState.currentGameId = null;
+}
+
+function getCustomTrack(gameId) {
+  return audioState.customTracks[gameId] || null;
+}
+
+function revokeCustomTrack(gameId) {
+  const track = getCustomTrack(gameId);
+  if (!track) return;
+  track.element.pause();
+  track.element.removeAttribute("src");
+  track.element.load();
+  try {
+    track.source.disconnect();
+  } catch (error) {
+    // Ignore disconnect failures from already-detached media sources.
+  }
+  if (track.url?.startsWith("blob:")) {
+    URL.revokeObjectURL(track.url);
+  }
+  delete audioState.customTracks[gameId];
+  if (audioState.currentGameId === gameId) {
+    audioState.currentGameId = null;
+  }
+}
+
+function setCustomTrack(gameId, file) {
+  if (!file || !audioState.supported) return null;
+  const context = ensureAudioContext();
+  if (!context) return null;
+  revokeCustomTrack(gameId);
+  const url = URL.createObjectURL(file);
+  const element = new Audio(url);
+  element.loop = true;
+  element.preload = "auto";
+  const source = context.createMediaElementSource(element);
+  source.connect(audioState.musicGain);
+  const track = {
+    name: file.name,
+    url,
+    element,
+    source,
+  };
+  audioState.customTracks[gameId] = track;
+  return track;
+}
+
+function clearCustomTrack(gameId) {
+  revokeCustomTrack(gameId);
+  if (!appState.audioMuted && appState.selectedGameId === gameId) {
+    syncGameTheme(true);
+  }
+}
+
+function playCustomTrack(gameId, force = false) {
+  const track = getCustomTrack(gameId);
+  if (!track) return false;
+  if (!force && audioState.currentGameId === gameId && !track.element.paused) return true;
+  stopGameTheme();
+  audioState.currentGameId = gameId;
+  if (force) {
+    try {
+      track.element.currentTime = 0;
+    } catch (error) {
+      // Ignore seek failures on not-yet-loaded media.
+    }
+  }
+  track.element.play().catch(() => {});
+  return true;
 }
 
 function playThemeStep() {
@@ -773,6 +846,7 @@ function syncGameTheme(force = false) {
   if (!audioState.unlocked || appState.audioMuted || !audioState.supported) return;
   const context = ensureAudioContext();
   if (!context || !appState.selectedGameId) return;
+  if (playCustomTrack(appState.selectedGameId, force)) return;
   if (!force && audioState.currentGameId === appState.selectedGameId && audioState.themeTimerId) return;
   stopGameTheme();
   audioState.currentGameId = appState.selectedGameId;
@@ -16524,6 +16598,9 @@ function createDashCubeGame() {
   let levelCompleted = false;
   let courseSelect;
   let courseNoteEl;
+  let trackInput;
+  let trackNoteEl;
+  let trackResetButton;
   const courses = {
     endless: {
       id: "endless",
@@ -16541,13 +16618,13 @@ function createDashCubeGame() {
       id: "portal",
       label: "Portal Pulse",
       note: "A fixed route focused on mini, speed, and ship portal transitions.",
-      sequence: ["padDuo", "miniMix", "blockOrb", "shipSprint", "doublePair", "miniMix", "speedCube", "shipSprint"],
+      sequence: ["padDuo", "miniMix", "blockOrb", "shipSprintLite", "miniMix", "speedBridge", "shipSprintLite"],
     },
     gravity: {
       id: "gravity",
       label: "Gravity Panic",
-      note: "Ceiling sections, gravity flips, and tighter recovery timing.",
-      sequence: ["padDuo", "gravityFlip", "roofWeave", "gravityFlip", "blockOrb", "gravityFlip", "doublePair", "tripleRise"],
+      note: "Ceiling dodges, gravity flips, and active upside-down timing.",
+      sequence: ["padDuo", "gravityDrop", "gravitySteps", "blockOrb", "gravityDrop", "gravitySteps", "doublePair", "tripleRise"],
     },
     gauntlet: {
       id: "gauntlet",
@@ -16586,24 +16663,109 @@ function createDashCubeGame() {
       sequence: ["padDuo", "speedBridge", "doublePair", "speedCube", "speedBridge", "shipSprint", "tripleRise"],
     },
   };
+  const chillCourseReplacements = {
+    shipSprint: "padDuo",
+    shipTunnel: "blockOrb",
+    gravityFlip: "roofWeave",
+    gravitySteps: "roofWeave",
+    gravityDrop: "gravityFlip",
+    speedCube: "doublePair",
+    speedBridge: "padDuo",
+    sizeWeave: "miniMix",
+    sawPad: "padDuo",
+  };
+  const easyCourseReplacements = {
+    shipTunnel: "shipSprint",
+    gravitySteps: "gravityFlip",
+    gravityDrop: "gravityFlip",
+    speedBridge: "doublePair",
+  };
+  const hardCourseTails = {
+    default: ["sawPad"],
+    stereo: ["speedCube"],
+    portal: ["shipSprint"],
+    gravity: ["gravitySteps"],
+    gauntlet: ["gravitySteps", "shipSprint"],
+    relay: ["speedBridge"],
+    skylab: ["shipTunnel"],
+    flux: ["gravityFlip", "doublePair"],
+    resize: ["sizeWeave"],
+    velocity: ["speedBridge", "speedCube"],
+  };
+  const chaosCourseTails = {
+    default: ["speedCube", "gravityFlip"],
+    stereo: ["speedBridge", "shipSprint"],
+    portal: ["shipTunnel", "gravityFlip"],
+    gravity: ["gravitySteps", "shipSprint"],
+    gauntlet: ["speedBridge", "gravitySteps", "shipTunnel"],
+    relay: ["ringLadder", "speedCube"],
+    skylab: ["shipTunnel", "shipSprint"],
+    flux: ["gravityFlip", "gravitySteps", "speedCube"],
+    resize: ["sizeWeave", "speedBridge"],
+    velocity: ["speedBridge", "shipTunnel", "gravityFlip"],
+  };
 
   function getSelectedCourse() {
     return courses[selectedCourseId] || courses.endless;
   }
 
+  function getCourseSequence(course = getSelectedCourse()) {
+    if (!course.sequence) return null;
+    const baseSequence = [...course.sequence];
+    const mode = appState.difficulty;
+    if (mode === "chill") {
+      return baseSequence
+        .map((pattern) => chillCourseReplacements[pattern] || pattern)
+        .slice(0, Math.max(4, baseSequence.length - 1));
+    }
+    if (mode === "easy") {
+      return baseSequence.map((pattern) => easyCourseReplacements[pattern] || pattern);
+    }
+    if (mode === "hard") {
+      return [...baseSequence, ...(hardCourseTails[course.id] || hardCourseTails.default)];
+    }
+    if (mode === "chaos") {
+      return [...baseSequence, ...(chaosCourseTails[course.id] || chaosCourseTails.default)];
+    }
+    return baseSequence;
+  }
+
+  function getDifficultySummary() {
+    const mode = appState.difficulty;
+    if (mode === "chill") return "Chill trims the harshest portal chains and widens the input windows.";
+    if (mode === "easy") return "Easy keeps the route recognizable but softens some advanced transitions.";
+    if (mode === "hard") return "Hard extends each route and tightens the physics.";
+    if (mode === "chaos") return "Chaos adds extra route segments, faster tempo, and harsher timing.";
+    return "Normal keeps the base route and standard timing.";
+  }
+
+  function updateTrackUi() {
+    const track = getCustomTrack("dash");
+    if (trackResetButton) trackResetButton.disabled = !track;
+    if (trackNoteEl) {
+      trackNoteEl.textContent = track
+        ? `Custom track loaded: ${track.name}. It will play for Cube Rush in this browser session.`
+        : "Built-in synth theme active. If you want the exact Stereo Madness song, load your own local audio file here.";
+    }
+  }
+
   function updateCourseUi() {
     const course = getSelectedCourse();
     if (courseSelect) courseSelect.value = selectedCourseId;
-    if (courseNoteEl) courseNoteEl.textContent = course.note;
+    if (courseNoteEl) {
+      const sequence = getCourseSequence(course);
+      courseNoteEl.textContent = `${course.note} ${getDifficultySummary()}${sequence ? ` Route length: ${sequence.length} segments.` : ""}`;
+    }
+    updateTrackUi();
   }
 
   function getConfig() {
     const mode = appState.difficulty;
-    if (mode === "chill") return { speed: 5, gravity: 0.56, jump: 11.8, orbJump: 10.4, shipGravity: 0.34, shipLift: 5.2, spawn: 116, gap: 92 };
-    if (mode === "easy") return { speed: 5.7, gravity: 0.6, jump: 12.3, orbJump: 10.9, shipGravity: 0.38, shipLift: 5.6, spawn: 106, gap: 84 };
-    if (mode === "hard") return { speed: 7.25, gravity: 0.7, jump: 13.2, orbJump: 11.6, shipGravity: 0.48, shipLift: 6.2, spawn: 88, gap: 68 };
-    if (mode === "chaos") return { speed: 8.15, gravity: 0.76, jump: 13.6, orbJump: 12, shipGravity: 0.54, shipLift: 6.5, spawn: 78, gap: 58 };
-    return { speed: 6.35, gravity: 0.65, jump: 12.8, orbJump: 11.2, shipGravity: 0.43, shipLift: 5.9, spawn: 96, gap: 76 };
+    if (mode === "chill") return { speed: 4.8, gravity: 0.52, jump: 12.1, orbJump: 10.8, shipGravity: 0.31, shipLift: 5.3, spawn: 124, gap: 100, hitboxInset: 7, ringX: 52, ringY: 60, speedUpDelta: 0.18, speedDownDelta: 0.18, speedCap: 1.6 };
+    if (mode === "easy") return { speed: 5.45, gravity: 0.58, jump: 12.45, orbJump: 11, shipGravity: 0.36, shipLift: 5.6, spawn: 112, gap: 88, hitboxInset: 6, ringX: 48, ringY: 56, speedUpDelta: 0.2, speedDownDelta: 0.18, speedCap: 1.68 };
+    if (mode === "hard") return { speed: 7.45, gravity: 0.72, jump: 13.15, orbJump: 11.55, shipGravity: 0.5, shipLift: 6.2, spawn: 84, gap: 64, hitboxInset: 3, ringX: 40, ringY: 48, speedUpDelta: 0.25, speedDownDelta: 0.14, speedCap: 1.94 };
+    if (mode === "chaos") return { speed: 8.35, gravity: 0.79, jump: 13.45, orbJump: 11.85, shipGravity: 0.56, shipLift: 6.45, spawn: 74, gap: 54, hitboxInset: 2, ringX: 36, ringY: 44, speedUpDelta: 0.28, speedDownDelta: 0.12, speedCap: 2.04 };
+    return { speed: 6.3, gravity: 0.65, jump: 12.75, orbJump: 11.2, shipGravity: 0.43, shipLift: 5.9, spawn: 96, gap: 76, hitboxInset: 5, ringX: 44, ringY: 52, speedUpDelta: 0.22, speedDownDelta: 0.16, speedCap: 1.8 };
   }
 
   function resetPlayer() {
@@ -16682,6 +16844,20 @@ function createDashCubeGame() {
         { kind: "double", x: startX + 382, width: 54, height: 34, speed },
       ];
     }
+    if (type === "shipSprintLite") {
+      return [
+        { kind: "portalSpeedUp", x: startX - 12, width: 28, height: 92, speed },
+        { kind: "portalShip", x: startX + 12, width: 30, height: 96, speed },
+        { kind: "saw", x: startX + 112, y: floorY - 104, width: 36, height: 36, speed },
+        { kind: "coin", x: startX + 166, y: floorY - 184, width: 22, height: 22, speed, taken: false },
+        { kind: "roof", x: startX + 202, width: 38, height: 30, speed },
+        { kind: "saw", x: startX + 262, y: floorY - 146, width: 36, height: 36, speed },
+        { kind: "portalCube", x: startX + 328, width: 30, height: 96, speed },
+        { kind: "portalSpeedDown", x: startX + 364, width: 28, height: 92, speed },
+        { kind: "pad", x: startX + 404, width: 36, height: 12, speed, used: false },
+        { kind: "spike", x: startX + 470, width: 34, height: 34, speed },
+      ];
+    }
     if (type === "gravityFlip") {
       return [
         { kind: "portalGravityUp", x: startX, width: 30, height: 96, speed },
@@ -16692,6 +16868,18 @@ function createDashCubeGame() {
         { kind: "roof", x: startX + 250, width: 38, height: 30, speed },
         { kind: "portalGravityDown", x: startX + 310, width: 30, height: 96, speed },
         { kind: "double", x: startX + 374, width: 54, height: 34, speed },
+      ];
+    }
+    if (type === "gravityDrop") {
+      return [
+        { kind: "portalGravityUp", x: startX, width: 30, height: 96, speed },
+        { kind: "saw", x: startX + 96, y: 18, width: 34, height: 34, speed },
+        { kind: "orbPink", x: startX + 116, y: 112, width: 24, height: 24, speed, used: false },
+        { kind: "coin", x: startX + 152, y: 150, width: 22, height: 22, speed, taken: false },
+        { kind: "saw", x: startX + 240, y: 24, width: 36, height: 36, speed },
+        { kind: "orbPink", x: startX + 254, y: 126, width: 24, height: 24, speed, used: false },
+        { kind: "portalGravityDown", x: startX + 314, width: 30, height: 96, speed },
+        { kind: "double", x: startX + 378, width: 54, height: 34, speed },
       ];
     }
     if (type === "miniMix") {
@@ -16849,9 +17037,10 @@ function createDashCubeGame() {
     if (last && 900 - patternRightEdge(last) < Math.max(42, config.gap - stageLevel * 2) + Math.random() * 34) return;
     const speed = config.speed + stageLevel * 0.18;
     const course = getSelectedCourse();
-    if (course.sequence) {
-      if (courseSpawnIndex >= course.sequence.length) return;
-      pieces.push(...buildPattern(course.sequence[courseSpawnIndex], 900, speed));
+    const sequence = getCourseSequence(course);
+    if (sequence) {
+      if (courseSpawnIndex >= sequence.length) return;
+      pieces.push(...buildPattern(sequence[courseSpawnIndex], 900, speed));
       courseSpawnIndex += 1;
       return;
     }
@@ -16892,11 +17081,12 @@ function createDashCubeGame() {
   }
 
   function playerBounds() {
+    const inset = getConfig().hitboxInset;
     return {
-      x: player.x + 4,
-      y: player.y + 4,
-      width: player.size - 8,
-      height: player.size - 8,
+      x: player.x + inset,
+      y: player.y + inset,
+      width: player.size - inset * 2,
+      height: player.size - inset * 2,
     };
   }
 
@@ -16927,11 +17117,22 @@ function createDashCubeGame() {
     flashTimer = 10;
   }
 
+  function getProgressRatio() {
+    const course = getSelectedCourse();
+    const sequence = getCourseSequence(course);
+    if (!sequence) {
+      return (distance % 160) / 160;
+    }
+    return clamp(distance / Math.max(1, sequence.length * 175), 0, 1);
+  }
+
   function updateHud() {
     const course = getSelectedCourse();
+    const progressPercent = Math.round(getProgressRatio() * 100);
     shell.hud.distance.textContent = `Distance ${Math.floor(distance)}m`;
-    shell.hud.mode.textContent = `${player.form === "ship" ? "Ship" : "Cube"}${player.scale < 1 ? " Mini" : ""} • ${player.gravityDir === -1 ? "Upside" : "Normal"} • x${speedModifier.toFixed(1)}`;
+    shell.hud.mode.textContent = `${getDifficultyPreset().label} • ${player.form === "ship" ? "Ship" : "Cube"}${player.scale < 1 ? " Mini" : ""} • ${player.gravityDir === -1 ? "Upside" : "Normal"} • x${speedModifier.toFixed(1)}`;
     shell.hud.level.textContent = `${course.sequence ? course.label : `Level ${stageLevel}`} • Coins ${coinsCollected}`;
+    shell.hud.progress.textContent = `Progress ${progressPercent}%`;
     refreshLevel();
   }
 
@@ -16968,8 +17169,8 @@ function createDashCubeGame() {
       (piece) =>
         (piece.kind === "orb" || piece.kind === "orbPink") &&
         !piece.used &&
-        Math.abs((piece.x + piece.width / 2) - (bounds.x + bounds.width / 2)) < 44 &&
-        Math.abs((piece.y + piece.height / 2) - (bounds.y + bounds.height / 2)) < 52,
+        Math.abs((piece.x + piece.width / 2) - (bounds.x + bounds.width / 2)) < config.ringX &&
+        Math.abs((piece.y + piece.height / 2) - (bounds.y + bounds.height / 2)) < config.ringY,
     );
     if (ring) {
       player.vy =
@@ -17099,9 +17300,9 @@ function createDashCubeGame() {
         } else if (portal.kind === "portalMaxi") {
           setPlayerScale(1);
         } else if (portal.kind === "portalSpeedUp") {
-          speedModifier = Math.min(1.8, speedModifier + 0.22);
+          speedModifier = Math.min(config.speedCap, speedModifier + config.speedUpDelta);
         } else if (portal.kind === "portalSpeedDown") {
-          speedModifier = Math.max(0.9, speedModifier - 0.18);
+          speedModifier = Math.max(0.88, speedModifier - config.speedDownDelta);
         } else if (portal.kind === "portalGravityUp") {
           setGravityDirection(-1);
         } else if (portal.kind === "portalGravityDown") {
@@ -17139,7 +17340,8 @@ function createDashCubeGame() {
     }
 
     const course = getSelectedCourse();
-    if (course.sequence && courseSpawnIndex >= course.sequence.length && pieces.length === 0) {
+    const sequence = getCourseSequence(course);
+    if (sequence && courseSpawnIndex >= sequence.length && pieces.length === 0) {
       running = false;
       levelCompleted = true;
       setScore(appState.score + 400 + coinsCollected * 25);
@@ -17191,9 +17393,7 @@ function createDashCubeGame() {
     ctx.fillRect(0, 10, 860, 6);
 
     const course = getSelectedCourse();
-    const stageProgress = course.sequence
-      ? clamp(distance / Math.max(1, course.sequence.length * 175), 0, 1)
-      : (distance % 160) / 160;
+    const stageProgress = getProgressRatio();
     ctx.fillStyle = "rgba(255,255,255,0.18)";
     ctx.fillRect(180, 18, 500, 10);
     ctx.fillStyle = "#7af0c8";
@@ -17201,6 +17401,12 @@ function createDashCubeGame() {
     ctx.strokeStyle = "rgba(255,255,255,0.28)";
     ctx.lineWidth = 2;
     ctx.strokeRect(180, 18, 500, 10);
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.textAlign = "left";
+    ctx.font = "700 12px Trebuchet MS";
+    ctx.fillText("Progress", 180, 14);
+    ctx.textAlign = "right";
+    ctx.fillText(`${Math.round(stageProgress * 100)}%`, 680, 14);
   }
 
   function drawSpike(x, y, width, upsideDown = false) {
@@ -17442,6 +17648,7 @@ function createDashCubeGame() {
           { id: "distance", label: "Distance 0m" },
           { id: "mode", label: "Normal mode" },
           { id: "level", label: "Level 1" },
+          { id: "progress", label: "Progress 0%" },
         ],
       });
       stage.innerHTML = "";
@@ -17457,7 +17664,13 @@ function createDashCubeGame() {
               .join("")}
           </select>
         </label>
+        <label class="field-group">
+          <span class="field-label">Custom track</span>
+          <input class="field-control" type="file" accept="audio/*" data-dash-track />
+        </label>
+        <button class="secondary-button dash-track-button" type="button" data-dash-track-clear>Use synth track</button>
         <p class="muted compact-copy dash-level-note" data-dash-note></p>
+        <p class="muted compact-copy dash-track-note" data-dash-track-note></p>
       `;
       shell.wrap.insertBefore(controls, shell.wrap.querySelector(".canvas-card"));
       shell.canvas.width = 860;
@@ -17465,10 +17678,31 @@ function createDashCubeGame() {
       ctx = shell.canvas.getContext("2d");
       courseSelect = shell.wrap.querySelector("[data-dash-course]");
       courseNoteEl = shell.wrap.querySelector("[data-dash-note]");
+      trackInput = shell.wrap.querySelector("[data-dash-track]");
+      trackNoteEl = shell.wrap.querySelector("[data-dash-track-note]");
+      trackResetButton = shell.wrap.querySelector("[data-dash-track-clear]");
       courseSelect.addEventListener("change", () => {
         selectedCourseId = courses[courseSelect.value] ? courseSelect.value : "endless";
         resetState();
         setStatus(`${getSelectedCourse().label} ready`);
+      });
+      trackInput.addEventListener("change", () => {
+        const file = trackInput.files?.[0];
+        if (!file) return;
+        unlockAudio();
+        setCustomTrack("dash", file);
+        updateTrackUi();
+        if (!appState.audioMuted && appState.selectedGameId === "dash") {
+          syncGameTheme(true);
+        }
+        setStatus(`Loaded ${file.name}`);
+      });
+      trackResetButton.addEventListener("click", () => {
+        if (!getCustomTrack("dash")) return;
+        if (trackInput) trackInput.value = "";
+        clearCustomTrack("dash");
+        updateTrackUi();
+        setStatus("Cube Rush synth theme active");
       });
       shell.canvas.addEventListener("pointerdown", queueJump);
       resetState();

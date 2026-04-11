@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260411a";
+const BUILD_VERSION = "20260411b";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -1024,18 +1024,11 @@ function playKick(time, gain = 0.045) {
 }
 
 function playHat(time, gain = 0.012) {
-  playLayeredTone(4800, 0.035, {
+  playTone(5200, 0.03, {
     time,
-    gain,
-    sustain: gain * 0.35,
-    release: 0.02,
-    filterType: "highpass",
-    filterFrequency: 3800,
-    voices: [
-      { type: "square", detune: -14, gain: 1 },
-      { type: "square", detune: 11, gain: 0.7 },
-      { type: "triangle", detune: 23, gain: 0.3 },
-    ],
+    gain: gain * 0.9,
+    type: "square",
+    destination: audioState.musicGain,
   });
 }
 
@@ -1051,8 +1044,7 @@ function playSnare(time, gain = 0.022) {
     filterQ: 0.7,
     voices: [
       { type: "triangle", detune: 0, gain: 1 },
-      { type: "square", detune: 17, gain: 0.5 },
-      { type: "square", ratio: 12, detune: -9, gain: 0.28 },
+      { type: "square", ratio: 8, detune: 9, gain: 0.22 },
     ],
   });
 }
@@ -1115,8 +1107,13 @@ function varyVoices(voices, seed, lane) {
     bass: ["sine", "triangle", "square"],
     pad: ["triangle", "sawtooth", "square", "sine"],
   };
+  const laneLimits = {
+    lead: 2,
+    bass: 1,
+    pad: 1,
+  };
   const choices = waveChoices[lane] || waveChoices.lead;
-  return voices.map((voice, index) => ({
+  return voices.slice(0, laneLimits[lane] || 2).map((voice, index) => ({
     ...voice,
     type: choices[(seed + index + choices.indexOf(voice.type || choices[0]) + 16) % choices.length],
     detune: (voice.detune || 0) + (((seed >> (index * 2 + 1)) % 9) - 4),
@@ -1568,11 +1565,12 @@ function playThemeStep() {
       : theme.padChordMode === "spread"
         ? [chord[0], chord[1], chord[2] + 12]
         : chord.slice(0, 3).map((note, index) => note + (index === 2 ? 12 : 0));
+  const pulseChord = [padChord[0], padChord[2] ?? padChord[1] ?? padChord[0] + 7];
 
   if (stepInBar === 0 || section.chordHits.includes(stepInBar)) {
     const isPulseHit = stepInBar !== 0 || section.padStyle === "pulse";
     playLayeredChord(
-      padChord,
+      isPulseHit ? pulseChord : padChord,
       theme.stepMs / 1000 * (isPulseHit ? 3.2 : 11.5) * (theme.padLengthFactor || 1),
       {
         time,
@@ -1582,8 +1580,8 @@ function playThemeStep() {
         release: isPulseHit ? 0.1 : 0.18,
         filterType: "lowpass",
         filterFrequency: isPulseHit ? 1750 : 1450,
-        voices: theme.padVoices.slice(0, 2),
-        strum: 0.012,
+        voices: theme.padVoices.slice(0, 1),
+        strum: isPulseHit ? 0.008 : 0.012,
       },
     );
   }
@@ -1620,7 +1618,7 @@ function playThemeStep() {
     });
   }
 
-  if (arpNote != null && stepInBar % 4 === 1 && section.arpScale > 0.2 && theme.arpGate[(subPhraseStep + theme.arpGateOffset) % theme.arpGate.length]) {
+  if (arpNote != null && stepInBar % 8 === 2 && section.arpScale > 0.2 && theme.arpGate[(subPhraseStep + theme.arpGateOffset) % theme.arpGate.length]) {
     playLayeredTone(midiToFrequency(arpNote), 0.11, {
       time,
       gain: (0.014 + velocity * 0.002) * section.arpScale,
@@ -1630,8 +1628,7 @@ function playThemeStep() {
       filterType: "lowpass",
       filterFrequency: 2100,
       voices: [
-        { type: "triangle", detune: -4, gain: 0.9 },
-        { type: "triangle", detune: 4, gain: 0.28 },
+        { type: "triangle", detune: -2, gain: 0.9 },
       ],
     });
   }
@@ -1648,7 +1645,7 @@ function playThemeStep() {
       voices: theme.leadVoices,
     });
   }
-  if (section.harmony && melodyNote != null && stepInBar % 8 === 0) {
+  if (section.harmony && melodyNote != null && stepInBar === 0 && bar % 2 === 1) {
     playLayeredTone(midiToFrequency(chord[2] + 12), 0.16, {
       time: time + 0.012,
       gain: 0.012 * section.leadScale,

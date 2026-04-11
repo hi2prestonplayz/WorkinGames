@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260410s";
+const BUILD_VERSION = "20260411a";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -1161,6 +1161,146 @@ function buildProgressionLoop(baseProgression, signature) {
   return signature.progressionOrder.map((index) => baseProgression[index % baseProgression.length]);
 }
 
+function buildSectionTimeline(seed, categoryIndex, bars) {
+  const sectionDefinitions = {
+    intro: {
+      melodyLayer: "response",
+      arpLayer: "air",
+      bassLayer: "base",
+      leadScale: 0.34,
+      arpScale: 0.52,
+      bassScale: 0.82,
+      padScale: 1.08,
+      kickScale: 0.72,
+      snareScale: 0.3,
+      hatScale: 0.28,
+      chordHits: [12],
+      harmony: false,
+      padStyle: "wash",
+      fill: false,
+    },
+    verse: {
+      melodyLayer: "verse",
+      arpLayer: "base",
+      bassLayer: "base",
+      leadScale: 0.8,
+      arpScale: 0.62,
+      bassScale: 1,
+      padScale: 0.9,
+      kickScale: 1,
+      snareScale: 1,
+      hatScale: 0.78,
+      chordHits: [],
+      harmony: false,
+      padStyle: "wash",
+      fill: false,
+    },
+    lift: {
+      melodyLayer: "lift",
+      arpLayer: "spark",
+      bassLayer: "drive",
+      leadScale: 0.92,
+      arpScale: 0.84,
+      bassScale: 1.04,
+      padScale: 0.78,
+      kickScale: 1.06,
+      snareScale: 1.08,
+      hatScale: 0.96,
+      chordHits: [8],
+      harmony: false,
+      padStyle: "pulse",
+      fill: false,
+    },
+    chorus: {
+      melodyLayer: "hook",
+      arpLayer: "spark",
+      bassLayer: "drive",
+      leadScale: 1.12,
+      arpScale: 0.94,
+      bassScale: 1.12,
+      padScale: 0.76,
+      kickScale: 1.08,
+      snareScale: 1.04,
+      hatScale: 1.12,
+      chordHits: [4, 8, 12],
+      harmony: true,
+      padStyle: "pulse",
+      fill: false,
+    },
+    bridge: {
+      melodyLayer: "response",
+      arpLayer: "air",
+      bassLayer: "base",
+      leadScale: 0.76,
+      arpScale: 1,
+      bassScale: 0.92,
+      padScale: 0.94,
+      kickScale: 0.84,
+      snareScale: 0.74,
+      hatScale: 0.68,
+      chordHits: [6, 12],
+      harmony: false,
+      padStyle: "wash",
+      fill: false,
+    },
+    break: {
+      melodyLayer: "lift",
+      arpLayer: "air",
+      bassLayer: "base",
+      leadScale: 0.52,
+      arpScale: 0.72,
+      bassScale: 0.84,
+      padScale: 0.9,
+      kickScale: 0.58,
+      snareScale: 0.42,
+      hatScale: 0.2,
+      chordHits: [],
+      harmony: false,
+      padStyle: "wash",
+      fill: false,
+    },
+    fill: {
+      melodyLayer: "hook",
+      arpLayer: "spark",
+      bassLayer: "drive",
+      leadScale: 0.98,
+      arpScale: 0.82,
+      bassScale: 1.08,
+      padScale: 0.7,
+      kickScale: 1.18,
+      snareScale: 1.26,
+      hatScale: 1.08,
+      chordHits: [8, 14],
+      harmony: true,
+      padStyle: "pulse",
+      fill: true,
+    },
+  };
+  const sectionTemplates = [
+    [
+      ["intro", "verse", "verse", "lift", "chorus", "chorus", "bridge", "fill"],
+      ["intro", "verse", "lift", "chorus", "break", "chorus", "bridge", "fill"],
+    ],
+    [
+      ["intro", "verse", "lift", "chorus", "chorus", "break", "chorus", "fill"],
+      ["intro", "verse", "verse", "lift", "chorus", "chorus", "bridge", "fill"],
+    ],
+    [
+      ["intro", "verse", "bridge", "lift", "chorus", "break", "chorus", "fill"],
+      ["intro", "verse", "verse", "bridge", "chorus", "bridge", "chorus", "fill"],
+    ],
+  ];
+  const templatePool = sectionTemplates[categoryIndex] || sectionTemplates[1];
+  const template = templatePool[seed % templatePool.length];
+  return Array.from({ length: bars }, (_, barIndex) => {
+    const definition = sectionDefinitions[template[barIndex % template.length]] || sectionDefinitions.verse;
+    return {
+      ...definition,
+      id: template[barIndex % template.length],
+    };
+  });
+}
+
 function buildNotePattern(motifs, progression, root, scale, seed, options = {}) {
   return progression.flatMap((chordDegree, barIndex) => {
     const motifIndex = (seed + barIndex) % motifs.length;
@@ -1208,21 +1348,57 @@ function createThemeForGame(gameId) {
   const bpm = bpmMin + (seed % Math.max(1, bpmMax - bpmMin));
   const stepMs = Math.round(60000 / bpm / 4);
   const progression = buildProgressionLoop(profile.progressions[seed % profile.progressions.length], signature);
+  const sections = buildSectionTimeline(seed, categoryIndex, progression.length);
   const loopSteps = progression.length * 16;
-  const melodyPattern = buildNotePattern(profile.melodyMotifs, progression, root, scale, seed % profile.melodyMotifs.length, {
-    rotate: signature.melodyRotate,
-    degreeShift: signature.melodyDegreeShift,
-    octaveShift: signature.melodyOctaveBias,
-  });
-  const bassPattern = buildNotePattern(profile.bassMotifs, progression, root, scale, (seed >> 2) % profile.bassMotifs.length, {
-    rotate: signature.bassRotate,
-    degreeShift: signature.bassDegreeShift,
-  });
-  const arpPattern = buildArpPattern(profile.arpMotifs, progression, root, scale, (seed >> 4) % profile.arpMotifs.length, {
-    rotate: signature.arpRotate,
-    degreeShift: signature.arpDegreeShift,
-    octaveShift: signature.arpOctaveBias,
-  });
+  const melodyLayers = {
+    verse: buildNotePattern(profile.melodyMotifs, progression, root, scale, seed % profile.melodyMotifs.length, {
+      rotate: signature.melodyRotate,
+      degreeShift: signature.melodyDegreeShift,
+      octaveShift: signature.melodyOctaveBias,
+    }),
+    hook: buildNotePattern(profile.melodyMotifs, progression, root, scale, (seed >> 1) % profile.melodyMotifs.length, {
+      rotate: signature.melodyRotate + 5,
+      degreeShift: signature.melodyDegreeShift + 1,
+      octaveShift: signature.melodyOctaveBias + 1,
+    }),
+    lift: buildNotePattern(profile.melodyMotifs, progression, root, scale, (seed >> 3) % profile.melodyMotifs.length, {
+      rotate: signature.melodyRotate + 9,
+      degreeShift: signature.melodyDegreeShift + (categoryIndex === 0 ? 2 : 1),
+      octaveShift: signature.melodyOctaveBias,
+    }),
+    response: buildNotePattern(profile.melodyMotifs, progression, root, scale, (seed >> 5) % profile.melodyMotifs.length, {
+      rotate: signature.melodyRotate + 2,
+      degreeShift: signature.melodyDegreeShift - 1,
+      octaveShift: Math.max(0, signature.melodyOctaveBias),
+    }),
+  };
+  const bassLayers = {
+    base: buildNotePattern(profile.bassMotifs, progression, root, scale, (seed >> 2) % profile.bassMotifs.length, {
+      rotate: signature.bassRotate,
+      degreeShift: signature.bassDegreeShift,
+    }),
+    drive: buildNotePattern(profile.bassMotifs, progression, root, scale, (seed >> 6) % profile.bassMotifs.length, {
+      rotate: signature.bassRotate + 4,
+      degreeShift: signature.bassDegreeShift + 1,
+    }),
+  };
+  const arpLayers = {
+    base: buildArpPattern(profile.arpMotifs, progression, root, scale, (seed >> 4) % profile.arpMotifs.length, {
+      rotate: signature.arpRotate,
+      degreeShift: signature.arpDegreeShift,
+      octaveShift: signature.arpOctaveBias,
+    }),
+    spark: buildArpPattern(profile.arpMotifs, progression, root, scale, (seed >> 7) % profile.arpMotifs.length, {
+      rotate: signature.arpRotate + 6,
+      degreeShift: signature.arpDegreeShift + 1,
+      octaveShift: signature.arpOctaveBias + 1,
+    }),
+    air: buildArpPattern(profile.arpMotifs, progression, root, scale, (seed >> 9) % profile.arpMotifs.length, {
+      rotate: signature.arpRotate + 2,
+      degreeShift: signature.arpDegreeShift,
+      octaveShift: signature.arpOctaveBias + 1,
+    }),
+  };
   const kickPattern = buildRhythmPattern(profile.kickMotifs, progression.length, seed % profile.kickMotifs.length, signature.kickRotate);
   const snarePattern = buildRhythmPattern(profile.snareMotifs, progression.length, (seed >> 1) % profile.snareMotifs.length, signature.snareRotate);
   const hatPattern = buildRhythmPattern(profile.hatMotifs, progression.length, (seed >> 3) % profile.hatMotifs.length, signature.hatRotate);
@@ -1240,10 +1416,11 @@ function createThemeForGame(gameId) {
     root,
     scale,
     progression,
+    sections,
     loopSteps,
-    melodyPattern,
-    bassPattern,
-    arpPattern,
+    melodyLayers,
+    bassLayers,
+    arpLayers,
     kickPattern,
     snarePattern,
     hatPattern,
@@ -1373,6 +1550,7 @@ function playThemeStep() {
   const bar = Math.floor(loopStep / 16);
   const stepInBar = loopStep % 16;
   const subPhraseStep = Math.floor(loopStep / 2) % 8;
+  const section = theme.sections[bar % theme.sections.length] || theme.sections[0];
   const time =
     context.currentTime +
     0.03 +
@@ -1380,9 +1558,9 @@ function playThemeStep() {
     (stepInBar % 2 === 1 ? theme.swingSeconds : 0);
   const chordDegree = theme.progression[bar];
   const chord = getChordNotes(theme.root, theme.scale, chordDegree, "seventh");
-  const bassNote = theme.bassPattern[loopStep];
-  const melodyNote = theme.melodyPattern[loopStep];
-  const arpNote = theme.arpPattern[loopStep];
+  const bassNote = theme.bassLayers[section.bassLayer]?.[loopStep] ?? theme.bassLayers.base[loopStep];
+  const melodyNote = theme.melodyLayers[section.melodyLayer]?.[loopStep] ?? theme.melodyLayers.verse[loopStep];
+  const arpNote = theme.arpLayers[section.arpLayer]?.[loopStep] ?? theme.arpLayers.base[loopStep];
   const velocity = theme.velocity[loopStep];
   const padChord =
     theme.padChordMode === "wide"
@@ -1391,18 +1569,19 @@ function playThemeStep() {
         ? [chord[0], chord[1], chord[2] + 12]
         : chord.slice(0, 3).map((note, index) => note + (index === 2 ? 12 : 0));
 
-  if (stepInBar === 0) {
+  if (stepInBar === 0 || section.chordHits.includes(stepInBar)) {
+    const isPulseHit = stepInBar !== 0 || section.padStyle === "pulse";
     playLayeredChord(
       padChord,
-      theme.stepMs / 1000 * 11.5 * (theme.padLengthFactor || 1),
+      theme.stepMs / 1000 * (isPulseHit ? 3.2 : 11.5) * (theme.padLengthFactor || 1),
       {
         time,
-        gain: 0.032,
-        attack: 0.05,
-        sustain: 0.014,
-        release: 0.18,
+        gain: (isPulseHit ? 0.02 : 0.032) * section.padScale,
+        attack: isPulseHit ? 0.02 : 0.05,
+        sustain: isPulseHit ? 0.01 : 0.014,
+        release: isPulseHit ? 0.1 : 0.18,
         filterType: "lowpass",
-        filterFrequency: 1450,
+        filterFrequency: isPulseHit ? 1750 : 1450,
         voices: theme.padVoices.slice(0, 2),
         strum: 0.012,
       },
@@ -1410,19 +1589,28 @@ function playThemeStep() {
   }
 
   if (theme.kickPattern[loopStep]) {
-    playKick(time, 0.04 + velocity * 0.006);
+    playKick(time, (0.04 + velocity * 0.006) * section.kickScale);
   }
   if (theme.snarePattern[loopStep]) {
-    playSnare(time, 0.02 + velocity * 0.003);
+    playSnare(time, (0.02 + velocity * 0.003) * section.snareScale);
   }
-  if (theme.hatPattern[loopStep] && theme.hatGate[(subPhraseStep + theme.hatGateOffset) % theme.hatGate.length]) {
-    playHat(time, (0.01 + velocity * 0.003) * (theme.hatGainFactor || 1));
+  if (theme.hatPattern[loopStep] && section.hatScale > 0.24 && theme.hatGate[(subPhraseStep + theme.hatGateOffset) % theme.hatGate.length]) {
+    playHat(time, (0.01 + velocity * 0.003) * (theme.hatGainFactor || 1) * section.hatScale);
+  }
+  if (section.fill && [11, 13, 15].includes(stepInBar)) {
+    playHat(time + 0.005, 0.015 * section.hatScale);
+  }
+  if (section.fill && [12, 14].includes(stepInBar)) {
+    playSnare(time + 0.005, 0.024 * section.snareScale);
+  }
+  if (section.fill && stepInBar === 15) {
+    playKick(time + 0.008, 0.042 * section.kickScale);
   }
 
-  if (bassNote != null) {
+  if (bassNote != null && section.bassScale > 0.2) {
     playLayeredTone(midiToFrequency(bassNote), stepInBar % 4 === 0 ? 0.26 : 0.18, {
       time,
-      gain: (0.034 + velocity * 0.004) * (theme.bassGainFactor || 1),
+      gain: (0.034 + velocity * 0.004) * (theme.bassGainFactor || 1) * section.bassScale,
       attack: 0.01,
       sustain: 0.018,
       release: 0.07,
@@ -1432,10 +1620,10 @@ function playThemeStep() {
     });
   }
 
-  if (arpNote != null && stepInBar % 4 === 1 && theme.arpGate[(subPhraseStep + theme.arpGateOffset) % theme.arpGate.length]) {
+  if (arpNote != null && stepInBar % 4 === 1 && section.arpScale > 0.2 && theme.arpGate[(subPhraseStep + theme.arpGateOffset) % theme.arpGate.length]) {
     playLayeredTone(midiToFrequency(arpNote), 0.11, {
       time,
-      gain: 0.014 + velocity * 0.002,
+      gain: (0.014 + velocity * 0.002) * section.arpScale,
       attack: 0.008,
       sustain: 0.008,
       release: 0.05,
@@ -1448,16 +1636,28 @@ function playThemeStep() {
     });
   }
 
-  if (melodyNote != null && stepInBar % 4 !== 1 && theme.leadGate[(subPhraseStep + theme.leadGateOffset) % theme.leadGate.length]) {
+  if (melodyNote != null && section.leadScale > 0.2 && stepInBar % 4 !== 1 && theme.leadGate[(subPhraseStep + theme.leadGateOffset) % theme.leadGate.length]) {
     playLayeredTone(midiToFrequency(melodyNote), stepInBar % 4 === 0 ? 0.22 : 0.14, {
       time,
-      gain: (0.022 + velocity * 0.003) * (theme.leadGainFactor || 1),
+      gain: (0.022 + velocity * 0.003) * (theme.leadGainFactor || 1) * section.leadScale,
       attack: 0.012,
       sustain: 0.015,
       release: 0.08,
       filterType: "lowpass",
       filterFrequency: 1850 + (stepInBar % 8) * 70,
       voices: theme.leadVoices,
+    });
+  }
+  if (section.harmony && melodyNote != null && stepInBar % 8 === 0) {
+    playLayeredTone(midiToFrequency(chord[2] + 12), 0.16, {
+      time: time + 0.012,
+      gain: 0.012 * section.leadScale,
+      attack: 0.02,
+      sustain: 0.01,
+      release: 0.08,
+      filterType: "lowpass",
+      filterFrequency: 2100,
+      voices: theme.leadVoices.slice(0, 1),
     });
   }
 

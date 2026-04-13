@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260411b";
+const BUILD_VERSION = "20260412b";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -433,6 +433,7 @@ const audioState = {
   lastStatusSoundAt: 0,
   lastStatusSignature: "",
   customTracks: {},
+  syncQueued: false,
 };
 
 const games = {
@@ -501,66 +502,114 @@ const games = {
 
 boot();
 
+function reportUiError(label, error) {
+  console.error(`Arcade ${label} failed.`, error);
+  if (els.statusPill) {
+    els.statusPill.textContent = "UI error";
+  }
+}
+
+function safeInvoke(label, fn, fallback = null) {
+  try {
+    return fn();
+  } catch (error) {
+    reportUiError(label, error);
+    return fallback;
+  }
+}
+
 function boot() {
-  updateSettingsUi();
-  updateBuildInfo();
-  updateShareUi();
-  renderGameList();
-  bindEvents();
-  selectGame(appState.selectedGameId);
+  safeInvoke("render game list", renderGameList);
+  safeInvoke("bind events", bindEvents);
+  safeInvoke("update settings", updateSettingsUi);
+  safeInvoke("update build info", updateBuildInfo);
+  safeInvoke("update share", updateShareUi);
+  safeInvoke("select initial game", () => selectGame(appState.selectedGameId));
 }
 
 function bindEvents() {
-  els.startButton.addEventListener("click", () => {
-    unlockAudio();
-    playUiSound("start");
-    beginStartCountdown();
+  els.gameList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const gameButton = target.closest("[data-game-id]");
+    if (gameButton instanceof HTMLElement) {
+      safeInvoke(`select game ${gameButton.dataset.gameId}`, () => {
+        selectGame(gameButton.dataset.gameId);
+        unlockAudio();
+        playUiSound("select");
+      });
+      return;
+    }
+    const categoryButton = target.closest("[data-category-toggle]");
+    if (categoryButton instanceof HTMLElement) {
+      safeInvoke(`toggle category ${categoryButton.dataset.categoryToggle}`, () => toggleCategory(categoryButton.dataset.categoryToggle));
+    }
   });
 
-  els.resetButton.addEventListener("click", () => {
-    unlockAudio();
-    playUiSound("reset");
-    clearAutoReset();
-    cancelStartCountdown();
-    appState.activeGame?.reset();
+  els.startButton?.addEventListener("click", () => {
+    safeInvoke("start button", () => {
+      unlockAudio();
+      playUiSound("start");
+      beginStartCountdown();
+    });
+  });
+
+  els.resetButton?.addEventListener("click", () => {
+    safeInvoke("reset button", () => {
+      unlockAudio();
+      playUiSound("reset");
+      clearAutoReset();
+      cancelStartCountdown();
+      appState.activeGame?.reset();
+    });
   });
 
   els.soundToggleButton?.addEventListener("click", () => {
-    toggleAudio();
+    safeInvoke("sound toggle", toggleAudio);
   });
 
   els.difficultySelect?.addEventListener("change", () => {
-    unlockAudio();
-    changeDifficulty(els.difficultySelect.value);
+    safeInvoke("difficulty change", () => {
+      unlockAudio();
+      changeDifficulty(els.difficultySelect.value);
+    });
   });
 
   els.startDelaySelect?.addEventListener("change", () => {
-    unlockAudio();
-    changeStartDelay(els.startDelaySelect.value);
+    safeInvoke("start delay change", () => {
+      unlockAudio();
+      changeStartDelay(els.startDelaySelect.value);
+    });
   });
 
   els.quickDifficultySelect?.addEventListener("change", () => {
-    unlockAudio();
-    changeDifficulty(els.quickDifficultySelect.value);
+    safeInvoke("quick difficulty change", () => {
+      unlockAudio();
+      changeDifficulty(els.quickDifficultySelect.value);
+    });
   });
 
   els.songSelect?.addEventListener("change", () => {
-    unlockAudio();
-    changeSongPreset(els.songSelect.value);
+    safeInvoke("soundtrack change", () => {
+      unlockAudio();
+      changeSongPreset(els.songSelect.value);
+    });
   });
 
   els.copyLinkButton?.addEventListener("click", async () => {
-    const link = els.shareLink?.value || window.location.href;
-    try {
-      await navigator.clipboard.writeText(link);
-      els.copyLinkButton.textContent = "Copied";
-      setStatus("Share link copied");
-      window.setTimeout(() => {
-        if (els.copyLinkButton) els.copyLinkButton.textContent = "Copy link";
-      }, 1600);
-    } catch (error) {
-      setStatus("Could not copy link");
-    }
+    await safeInvoke("copy link", async () => {
+      const link = els.shareLink?.value || window.location.href;
+      try {
+        await navigator.clipboard.writeText(link);
+        els.copyLinkButton.textContent = "Copied";
+        setStatus("Share link copied");
+        window.setTimeout(() => {
+          if (els.copyLinkButton) els.copyLinkButton.textContent = "Copy link";
+        }, 1600);
+      } catch (error) {
+        setStatus("Could not copy link");
+      }
+    });
   });
 
   window.addEventListener("keydown", (event) => {
@@ -575,13 +624,15 @@ function bindEvents() {
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      stopGameTheme();
-      return;
-    }
-    if (!appState.audioMuted) {
-      syncGameTheme(true);
-    }
+    safeInvoke("visibility change", () => {
+      if (document.hidden) {
+        stopGameTheme();
+        return;
+      }
+      if (!appState.audioMuted) {
+        queueThemeSync(true);
+      }
+    });
   });
 }
 
@@ -645,45 +696,37 @@ function renderGameList() {
       ? `<section class="game-category"><p class="game-category-label">More</p>${uncategorizedMarkup}</section>`
       : "");
 
-  els.gameList.querySelectorAll("[data-game-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      unlockAudio();
-      playUiSound("select");
-      selectGame(button.dataset.gameId);
-    });
-  });
-  els.gameList.querySelectorAll("[data-category-toggle]").forEach((button) => {
-    button.addEventListener("click", () => toggleCategory(button.dataset.categoryToggle));
-  });
 }
 
 function selectGame(gameId) {
-  const nextGame = games[gameId];
-  if (!nextGame) return;
+  safeInvoke(`select game core ${gameId}`, () => {
+    const nextGame = games[gameId];
+    if (!nextGame) return;
 
-  clearAutoReset();
-  cancelStartCountdown();
-  appState.activeGame?.destroy?.();
-  appState.selectedGameId = gameId;
-  appState.activeGame = nextGame;
-  appState.score = 0;
-  appState.best = Number(highScores[gameId] || 0);
+    clearAutoReset();
+    cancelStartCountdown();
+    appState.activeGame?.destroy?.();
+    appState.selectedGameId = gameId;
+    appState.activeGame = nextGame;
+    appState.score = 0;
+    appState.best = Number(highScores[gameId] || 0);
 
-  renderGameList();
-  els.gameDescription.textContent = nextGame.description;
-  els.gameControls.textContent = nextGame.controls;
-  els.heroTitle.textContent = nextGame.title;
-  els.heroSubtitle.textContent = nextGame.subtitle;
-  els.stageTitle.textContent = nextGame.title;
-  setScore(0);
-  setBest(appState.best);
-  refreshLevel();
-  setStatus("Ready");
-  nextGame.mount(els.gameStage);
-  nextGame.applySettings?.();
-  updateSettingsUi();
-  refreshLevel();
-  syncGameTheme(true);
+    renderGameList();
+    els.gameDescription.textContent = nextGame.description;
+    els.gameControls.textContent = nextGame.controls;
+    els.heroTitle.textContent = nextGame.title;
+    els.heroSubtitle.textContent = nextGame.subtitle;
+    els.stageTitle.textContent = nextGame.title;
+    setScore(0);
+    setBest(appState.best);
+    refreshLevel();
+    setStatus("Ready");
+    nextGame.mount(els.gameStage);
+    nextGame.applySettings?.();
+    updateSettingsUi();
+    refreshLevel();
+    queueThemeSync(true);
+  });
 }
 
 function setScore(value) {
@@ -772,7 +815,7 @@ function cancelStartCountdown() {
 function beginStartCountdown() {
   if (!appState.activeGame || appState.countdownTimerId) return;
   if (appState.startCountdownSeconds <= 0) {
-    syncGameTheme(true);
+    queueThemeSync(true);
     appState.activeGame.start();
     return;
   }
@@ -789,7 +832,7 @@ function beginStartCountdown() {
       const targetGameId = appState.countdownTargetGameId;
       cancelStartCountdown();
       if (targetGameId === appState.selectedGameId) {
-        syncGameTheme(true);
+        queueThemeSync(true);
         appState.activeGame?.start();
       }
       return;
@@ -841,7 +884,7 @@ function changeSongPreset(value) {
   persistSettings();
   updateSettingsUi();
   if (!appState.audioMuted) {
-    syncGameTheme(true);
+    queueThemeSync(true);
   }
   setStatus(`${getSongPreset().label} soundtrack ready`);
 }
@@ -1456,12 +1499,40 @@ function stopGameTheme() {
   audioState.currentGameId = null;
 }
 
+function handleAudioFailure(error) {
+  console.error("Arcade audio disabled after runtime failure.", error);
+  appState.audioMuted = true;
+  audioState.syncQueued = false;
+  persistSettings();
+  updateAudioUi();
+  stopGameTheme();
+  setStatus("Sound disabled");
+}
+
+function queueThemeSync(force = false) {
+  if (!audioState.unlocked || appState.audioMuted || !audioState.supported) return;
+  if (audioState.syncQueued && !force) return;
+  audioState.syncQueued = true;
+  window.setTimeout(() => {
+    audioState.syncQueued = false;
+    try {
+      syncGameTheme(force);
+    } catch (error) {
+      handleAudioFailure(error);
+    }
+  }, 0);
+}
+
 function scheduleNextThemeStep() {
   if (!audioState.currentTheme || appState.audioMuted || !audioState.unlocked) return;
   audioState.themeTimerId = window.setTimeout(() => {
     audioState.themeTimerId = null;
-    playThemeStep();
-    scheduleNextThemeStep();
+    try {
+      playThemeStep();
+      scheduleNextThemeStep();
+    } catch (error) {
+      handleAudioFailure(error);
+    }
   }, audioState.currentTheme.stepMs);
 }
 
@@ -1513,7 +1584,7 @@ function setCustomTrack(gameId, file) {
 function clearCustomTrack(gameId) {
   revokeCustomTrack(gameId);
   if (!appState.audioMuted && appState.selectedGameId === gameId) {
-    syncGameTheme(true);
+    queueThemeSync(true);
   }
 }
 
@@ -1680,14 +1751,20 @@ function unlockAudio() {
     updateAudioUi();
     return;
   }
-  const context = ensureAudioContext();
+  let context;
+  try {
+    context = ensureAudioContext();
+  } catch (error) {
+    handleAudioFailure(error);
+    return;
+  }
   if (!context) return;
   audioState.unlocked = true;
   if (context.state === "suspended") {
     context.resume().catch(() => {});
   }
   if (!appState.audioMuted) {
-    syncGameTheme(true);
+    queueThemeSync(true);
   }
   updateAudioUi();
 }
@@ -1702,7 +1779,7 @@ function setAudioMuted(value) {
   if (appState.audioMuted) {
     stopGameTheme();
   } else {
-    syncGameTheme(true);
+    queueThemeSync(true);
   }
 }
 
@@ -18527,7 +18604,7 @@ function createDashCubeGame() {
         setCustomTrack("dash", file);
         updateTrackUi();
         if (!appState.audioMuted && appState.selectedGameId === "dash") {
-          syncGameTheme(true);
+          queueThemeSync(true);
         }
         setStatus(`Loaded ${file.name}`);
       });

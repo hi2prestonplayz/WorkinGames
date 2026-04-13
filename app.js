@@ -1,7 +1,7 @@
 const STORAGE_KEY = "browser-arcade-high-scores-v1";
 const SETTINGS_KEY = "browser-arcade-settings-v1";
 const SPACE_UPGRADE_BREAK_COOLDOWN_MS = 25000;
-const BUILD_VERSION = "20260412b";
+const BUILD_VERSION = "20260413a";
 const NEW_GAME_IDS = ["dash", "glow", "ring", "laser", "steps", "storm", "panic", "swap"];
 const DIFFICULTY_PRESETS = {
   chill: {
@@ -236,13 +236,36 @@ const SONG_PATTERN_LIBRARY = {
       [[0, 1], null, [2, 1], null, [4, 1], null, [2, 1], null, [5, 1], null, [4, 1], null, [2, 1], null, [1, 1], null],
       [[0, 1], null, [2, 1], [4, 1], null, [2, 1], null, [5, 1], [6, 1], null, [4, 1], null, [2, 1], null, [0, 1], null],
     ],
+    hookMotifs: [
+      [[0, 1], null, [4, 1], null, [5, 1], [4, 1], [2, 1], null, [6, 1], null, [5, 1], [4, 1], [2, 1], null, [1, 1], null],
+      [[0, 1], [2, 1], [4, 1], null, [5, 1], null, [4, 1], [2, 1], [6, 1], null, [5, 1], [4, 1], [2, 1], [1, 1], [0, 1], null],
+    ],
+    responseMotifs: [
+      [[0, 1], null, null, null, [2, 1], null, null, null, [4, 1], null, [2, 1], null, [1, 1], null, null, null],
+      [null, null, [2, 1], null, [4, 1], null, null, null, [5, 1], null, [4, 1], null, [2, 1], null, null, null],
+    ],
+    liftMotifs: [
+      [[0, 1], null, [1, 1], [2, 1], [4, 1], null, [5, 1], null, [6, 1], [5, 1], [4, 1], null, [5, 1], [6, 1], [7, 1], null],
+      [[0, 1], [1, 1], [2, 1], null, [4, 1], [5, 1], null, [6, 1], [5, 1], [4, 1], [2, 1], null, [5, 1], [4, 1], [2, 1], null],
+    ],
     bassMotifs: [
       [[0, -1], null, null, null, [0, -1], null, [4, -1], null, [0, -1], null, null, null, [5, -1], null, [4, -1], null],
       [[0, -1], null, [0, -1], null, [4, -1], null, [0, -1], null, [0, -1], null, [5, -1], null, [4, -1], null, [0, -1], null],
     ],
+    driveBassMotifs: [
+      [[0, -1], null, [0, -1], [4, -1], [0, -1], null, [4, -1], null, [0, -1], [5, -1], [4, -1], null, [0, -1], [5, -1], [4, -1], null],
+      [[0, -1], [0, -1], null, [4, -1], [0, -1], null, [4, -1], [0, -1], [0, -1], null, [5, -1], [4, -1], [0, -1], null, [4, -1], null],
+    ],
     arpMotifs: [
       [null, [0, 1], null, [1, 1], null, [2, 1], null, [1, 1], null, [2, 1], null, [3, 1], null, [2, 1], null, [1, 1]],
       [null, [1, 1], null, [2, 1], null, [3, 1], null, [2, 1], null, [1, 1], null, [2, 1], null, [3, 1], null, [2, 1]],
+    ],
+    sparkArpMotifs: [
+      [[0, 1], null, [1, 1], [2, 1], null, [2, 1], [3, 1], null, [2, 1], [1, 1], [2, 1], null, [3, 1], [2, 1], [1, 1], null],
+      [null, [1, 1], [2, 1], null, [3, 1], [2, 1], null, [1, 1], [2, 1], null, [3, 1], [2, 1], null, [1, 1], [0, 1], null],
+    ],
+    airArpMotifs: [
+      [null, [0, 2], null, null, [2, 2], null, null, null, [1, 2], null, null, null, [2, 2], null, null, null],
     ],
     kickMotifs: [
       [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0],
@@ -260,12 +283,33 @@ const SONG_PATTERN_LIBRARY = {
       [[0, 1], null, null, [1, 1], [2, 1], null, null, [1, 1], [4, 1], null, null, [2, 1], [1, 1], null, [0, 1], null],
       [[0, 1], null, [1, 1], null, [2, 1], null, [4, 1], null, [5, 1], null, [4, 1], null, [2, 1], [1, 1], [0, 1], null],
     ],
+    hookMotifs: [
+      [[0, 1], null, [2, 1], null, [4, 1], [5, 1], null, [4, 1], [2, 1], null, [4, 1], null, [5, 1], [4, 1], [2, 1], null],
+      [[0, 1], [1, 1], null, [2, 1], [4, 1], null, [5, 1], null, [4, 1], [2, 1], null, [1, 1], [2, 1], null, [0, 1], null],
+    ],
+    responseMotifs: [
+      [[0, 1], null, null, null, [1, 1], null, null, null, [2, 1], null, [1, 1], null, [0, 1], null, null, null],
+      [null, null, [1, 1], null, [2, 1], null, null, null, [4, 1], null, [2, 1], null, [1, 1], null, null, null],
+    ],
+    liftMotifs: [
+      [[0, 1], null, [1, 1], [2, 1], null, [4, 1], [5, 1], null, [4, 1], [5, 1], null, [6, 1], [5, 1], [4, 1], [2, 1], null],
+      [[0, 1], [1, 1], [2, 1], null, [4, 1], null, [5, 1], [4, 1], [2, 1], null, [4, 1], [5, 1], [6, 1], null, [5, 1], null],
+    ],
     bassMotifs: [
       [[0, -1], null, null, null, [0, -1], null, null, null, [4, -1], null, null, null, [5, -1], null, [4, -1], null],
+    ],
+    driveBassMotifs: [
+      [[0, -1], null, [0, -1], null, [4, -1], null, [0, -1], null, [5, -1], null, [4, -1], null, [0, -1], null, [4, -1], null],
     ],
     arpMotifs: [
       [null, [0, 1], null, null, null, [1, 1], null, null, null, [2, 1], null, null, null, [1, 1], null, null],
       [null, [0, 1], null, [1, 1], null, null, null, [2, 1], null, [1, 1], null, null, null, [0, 1], null, null],
+    ],
+    sparkArpMotifs: [
+      [null, [0, 1], [1, 1], null, [2, 1], null, [1, 1], null, [2, 1], [3, 1], null, [2, 1], [1, 1], null, [0, 1], null],
+    ],
+    airArpMotifs: [
+      [null, [0, 2], null, null, [1, 2], null, null, null, [2, 2], null, null, null, [1, 2], null, null, null],
     ],
     kickMotifs: [
       [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
@@ -282,11 +326,32 @@ const SONG_PATTERN_LIBRARY = {
       [[0, 1], null, null, null, [2, 1], null, [1, 1], null, [4, 1], null, null, null, [2, 1], null, [1, 1], null],
       [[0, 1], null, [1, 1], null, null, null, [2, 1], null, [4, 1], null, [5, 1], null, [4, 1], null, [2, 1], null],
     ],
+    hookMotifs: [
+      [[0, 1], null, [2, 1], null, [4, 1], null, [5, 1], null, [4, 1], [2, 1], null, [1, 1], [2, 1], null, [0, 1], null],
+      [[0, 1], null, null, [2, 1], [4, 1], null, [5, 1], null, [4, 1], null, [2, 1], null, [1, 1], null, [0, 1], null],
+    ],
+    responseMotifs: [
+      [[0, 1], null, null, null, [1, 1], null, null, null, [2, 1], null, null, null, [1, 1], null, null, null],
+      [null, null, [1, 1], null, [2, 1], null, null, null, [4, 1], null, [2, 1], null, [1, 1], null, null, null],
+    ],
+    liftMotifs: [
+      [[0, 1], null, [1, 1], null, [2, 1], [4, 1], null, [5, 1], [4, 1], null, [5, 1], null, [7, 1], [5, 1], [4, 1], null],
+      [[0, 1], [1, 1], null, [2, 1], [4, 1], null, [5, 1], null, [4, 1], [5, 1], null, [4, 1], [2, 1], null, [1, 1], null],
+    ],
     bassMotifs: [
       [[0, -1], null, null, null, null, null, [4, -1], null, [0, -1], null, null, null, null, null, [3, -1], null],
     ],
+    driveBassMotifs: [
+      [[0, -1], null, [0, -1], null, [4, -1], null, [3, -1], null, [0, -1], null, [5, -1], null, [3, -1], null, [0, -1], null],
+    ],
     arpMotifs: [
       [null, [0, 1], null, null, null, [2, 1], null, null, null, [1, 1], null, null, null, [2, 1], null, null],
+    ],
+    sparkArpMotifs: [
+      [null, [0, 1], null, [2, 1], null, [1, 1], null, [3, 1], null, [2, 1], null, [1, 1], null, [2, 1], null, [0, 1]],
+    ],
+    airArpMotifs: [
+      [null, [0, 2], null, null, null, [2, 2], null, null, null, [1, 2], null, null, null, [2, 2], null, null],
     ],
     kickMotifs: [
       [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
@@ -303,11 +368,32 @@ const SONG_PATTERN_LIBRARY = {
       [[0, 1], [2, 1], null, [4, 1], [2, 1], null, [5, 1], null, [6, 1], [5, 1], null, [4, 1], [2, 1], null, [1, 1], null],
       [[0, 1], null, [2, 1], [4, 1], [5, 1], null, [4, 1], null, [6, 1], null, [5, 1], [4, 1], [2, 1], null, [0, 1], null],
     ],
+    hookMotifs: [
+      [[0, 1], [2, 1], [4, 1], null, [5, 1], [4, 1], [2, 1], null, [6, 1], [5, 1], [4, 1], null, [2, 1], [1, 1], [0, 1], null],
+      [[0, 1], null, [2, 1], [4, 1], [6, 1], null, [5, 1], [4, 1], [2, 1], null, [4, 1], [5, 1], [6, 1], null, [4, 1], null],
+    ],
+    responseMotifs: [
+      [[0, 1], null, [2, 1], null, null, null, [4, 1], null, [2, 1], null, [1, 1], null, null, null, [0, 1], null],
+      [null, [2, 1], null, null, [4, 1], null, [2, 1], null, [5, 1], null, [4, 1], null, [2, 1], null, [1, 1], null],
+    ],
+    liftMotifs: [
+      [[0, 1], [1, 1], [2, 1], [4, 1], [5, 1], null, [6, 1], [5, 1], [4, 1], [5, 1], [6, 1], null, [7, 1], [6, 1], [5, 1], null],
+      [[0, 1], [2, 1], [4, 1], null, [5, 1], [6, 1], null, [7, 1], [6, 1], [5, 1], [4, 1], null, [5, 1], [4, 1], [2, 1], null],
+    ],
     bassMotifs: [
       [[0, -1], null, [0, -1], null, [4, -1], null, [0, -1], null, [0, -1], null, [5, -1], null, [4, -1], null, [0, -1], null],
     ],
+    driveBassMotifs: [
+      [[0, -1], [0, -1], null, [4, -1], [0, -1], [4, -1], null, [0, -1], [5, -1], [4, -1], null, [0, -1], [5, -1], [4, -1], [0, -1], null],
+    ],
     arpMotifs: [
       [null, [0, 1], [1, 1], [2, 1], null, [1, 1], [2, 1], [3, 1], null, [2, 1], [1, 1], [0, 1], null, [1, 1], [2, 1], [1, 1]],
+    ],
+    sparkArpMotifs: [
+      [[0, 1], [1, 1], [2, 1], [3, 1], null, [2, 1], [3, 1], [2, 1], [1, 1], [2, 1], [3, 1], null, [2, 1], [1, 1], [0, 1], null],
+    ],
+    airArpMotifs: [
+      [null, [0, 2], null, [1, 2], null, null, [2, 2], null, [1, 2], null, null, [2, 2], null, [1, 2], null, null],
     ],
     kickMotifs: [
       [1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0],
@@ -324,11 +410,32 @@ const SONG_PATTERN_LIBRARY = {
       [[0, 2], null, null, [2, 2], null, null, [4, 2], null, [5, 2], null, null, [4, 2], null, [2, 2], [0, 2], null],
       [[0, 2], null, [2, 2], null, null, [4, 2], null, null, [5, 2], null, [4, 2], null, [2, 2], null, [0, 2], null],
     ],
+    hookMotifs: [
+      [[0, 2], null, [2, 2], null, [4, 2], null, [5, 2], null, [7, 2], null, [5, 2], null, [4, 2], [2, 2], [0, 2], null],
+      [[0, 2], [2, 2], null, [4, 2], null, [5, 2], null, [7, 2], [5, 2], null, [4, 2], null, [2, 2], null, [0, 2], null],
+    ],
+    responseMotifs: [
+      [[0, 2], null, null, null, [2, 2], null, null, null, [4, 2], null, null, null, [2, 2], null, null, null],
+      [null, null, [2, 2], null, [4, 2], null, null, null, [5, 2], null, null, null, [4, 2], null, null, null],
+    ],
+    liftMotifs: [
+      [[0, 2], null, [2, 2], [4, 2], null, [5, 2], null, [7, 2], [9, 2], null, [7, 2], [5, 2], [4, 2], null, [2, 2], null],
+      [[0, 2], [2, 2], null, [4, 2], [5, 2], null, [7, 2], null, [9, 2], null, [7, 2], [5, 2], [4, 2], null, [2, 2], null],
+    ],
     bassMotifs: [
       [[0, -1], null, null, null, [4, -1], null, null, null, [0, -1], null, null, null, [5, -1], null, null, null],
     ],
+    driveBassMotifs: [
+      [[0, -1], null, [4, -1], null, [0, -1], null, [5, -1], null, [4, -1], null, [0, -1], null, [5, -1], null, [4, -1], null],
+    ],
     arpMotifs: [
       [null, [0, 2], null, [1, 2], null, [2, 2], null, [3, 2], null, [2, 2], null, [1, 2], null, [0, 2], null, [1, 2]],
+    ],
+    sparkArpMotifs: [
+      [null, [0, 2], [1, 2], null, [2, 2], null, [3, 2], null, [2, 2], [1, 2], null, [0, 2], null, [1, 2], [2, 2], null],
+    ],
+    airArpMotifs: [
+      [null, [0, 3], null, null, [2, 3], null, null, null, [1, 3], null, null, null, [2, 3], null, null, null],
     ],
     kickMotifs: [
       [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
@@ -345,12 +452,34 @@ const SONG_PATTERN_LIBRARY = {
       [[0, 1], null, [0, 1], [2, 1], [4, 1], null, [2, 1], [4, 1], [5, 1], null, [5, 1], [4, 1], [2, 1], null, [1, 1], [0, 1]],
       [[0, 1], [2, 1], [4, 1], null, [2, 1], [4, 1], [5, 1], null, [6, 1], [5, 1], [4, 1], null, [2, 1], [1, 1], [0, 1], null],
     ],
+    hookMotifs: [
+      [[0, 1], [2, 1], [4, 1], [5, 1], [6, 1], null, [5, 1], [4, 1], [6, 1], [5, 1], [4, 1], [2, 1], [5, 1], [4, 1], [2, 1], [0, 1]],
+      [[0, 1], null, [2, 1], [4, 1], [5, 1], [6, 1], null, [5, 1], [4, 1], [5, 1], [6, 1], null, [5, 1], [4, 1], [2, 1], [0, 1]],
+    ],
+    responseMotifs: [
+      [[0, 1], null, [2, 1], null, [4, 1], null, null, null, [5, 1], null, [4, 1], null, [2, 1], null, [1, 1], null],
+      [null, [2, 1], null, [4, 1], null, null, [5, 1], null, [6, 1], null, [5, 1], null, [4, 1], null, [2, 1], null],
+    ],
+    liftMotifs: [
+      [[0, 1], [2, 1], [4, 1], [5, 1], [6, 1], [7, 1], null, [6, 1], [5, 1], [6, 1], [7, 1], null, [8, 1], [7, 1], [6, 1], null],
+      [[0, 1], [2, 1], [4, 1], null, [5, 1], [6, 1], [7, 1], null, [6, 1], [5, 1], [4, 1], [2, 1], [5, 1], [4, 1], [2, 1], null],
+    ],
     bassMotifs: [
       [[0, -1], null, [0, -1], null, [4, -1], null, [0, -1], null, [0, -1], null, [5, -1], null, [4, -1], null, [0, -1], null],
       [[0, -1], [0, -1], null, null, [4, -1], null, [0, -1], null, [0, -1], [5, -1], null, null, [4, -1], null, [0, -1], null],
     ],
+    driveBassMotifs: [
+      [[0, -1], [0, -1], [4, -1], null, [0, -1], [4, -1], [0, -1], null, [5, -1], [4, -1], [0, -1], null, [5, -1], [4, -1], [0, -1], null],
+      [[0, -1], [4, -1], null, [0, -1], [4, -1], [0, -1], null, [5, -1], [4, -1], [0, -1], null, [5, -1], [4, -1], [0, -1], null, [4, -1]],
+    ],
     arpMotifs: [
       [null, [0, 1], [1, 1], [2, 1], null, [1, 1], [2, 1], [3, 1], null, [2, 1], [3, 1], [2, 1], null, [1, 1], [0, 1], [1, 1]],
+    ],
+    sparkArpMotifs: [
+      [[0, 1], [1, 1], [2, 1], [3, 1], [2, 1], [1, 1], [2, 1], [3, 1], [2, 1], [3, 1], [2, 1], [1, 1], [0, 1], [1, 1], [2, 1], [3, 1]],
+    ],
+    airArpMotifs: [
+      [null, [0, 2], null, [2, 2], null, null, [1, 2], null, [2, 2], null, null, [1, 2], null, [0, 2], null, null],
     ],
     kickMotifs: [
       [1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0],
@@ -1375,6 +1504,12 @@ function buildRhythmPattern(motifs, bars, seed, rotate = 0) {
   return pattern;
 }
 
+function resolveMotifPool(profile, primaryKey, fallbackKey) {
+  const primary = profile[primaryKey];
+  if (Array.isArray(primary) && primary.length) return primary;
+  return profile[fallbackKey];
+}
+
 function createThemeForGame(gameId) {
   const seed = hashString(gameId);
   const random = createSeededRandom(seed);
@@ -1390,50 +1525,59 @@ function createThemeForGame(gameId) {
   const progression = buildProgressionLoop(profile.progressions[seed % profile.progressions.length], signature);
   const sections = buildSectionTimeline(seed, categoryIndex, progression.length);
   const loopSteps = progression.length * 16;
+  const verseMelodyMotifs = resolveMotifPool(profile, "verseMotifs", "melodyMotifs");
+  const hookMelodyMotifs = resolveMotifPool(profile, "hookMotifs", "melodyMotifs");
+  const responseMelodyMotifs = resolveMotifPool(profile, "responseMotifs", "melodyMotifs");
+  const liftMelodyMotifs = resolveMotifPool(profile, "liftMotifs", "melodyMotifs");
+  const baseBassMotifs = resolveMotifPool(profile, "baseBassMotifs", "bassMotifs");
+  const driveBassMotifs = resolveMotifPool(profile, "driveBassMotifs", "bassMotifs");
+  const baseArpMotifs = resolveMotifPool(profile, "baseArpMotifs", "arpMotifs");
+  const sparkArpMotifs = resolveMotifPool(profile, "sparkArpMotifs", "arpMotifs");
+  const airArpMotifs = resolveMotifPool(profile, "airArpMotifs", "arpMotifs");
   const melodyLayers = {
-    verse: buildNotePattern(profile.melodyMotifs, progression, root, scale, seed % profile.melodyMotifs.length, {
+    verse: buildNotePattern(verseMelodyMotifs, progression, root, scale, seed % verseMelodyMotifs.length, {
       rotate: signature.melodyRotate,
       degreeShift: signature.melodyDegreeShift,
       octaveShift: signature.melodyOctaveBias,
     }),
-    hook: buildNotePattern(profile.melodyMotifs, progression, root, scale, (seed >> 1) % profile.melodyMotifs.length, {
+    hook: buildNotePattern(hookMelodyMotifs, progression, root, scale, (seed >> 1) % hookMelodyMotifs.length, {
       rotate: signature.melodyRotate + 5,
       degreeShift: signature.melodyDegreeShift + 1,
       octaveShift: signature.melodyOctaveBias + 1,
     }),
-    lift: buildNotePattern(profile.melodyMotifs, progression, root, scale, (seed >> 3) % profile.melodyMotifs.length, {
+    lift: buildNotePattern(liftMelodyMotifs, progression, root, scale, (seed >> 3) % liftMelodyMotifs.length, {
       rotate: signature.melodyRotate + 9,
       degreeShift: signature.melodyDegreeShift + (categoryIndex === 0 ? 2 : 1),
       octaveShift: signature.melodyOctaveBias,
     }),
-    response: buildNotePattern(profile.melodyMotifs, progression, root, scale, (seed >> 5) % profile.melodyMotifs.length, {
+    response: buildNotePattern(responseMelodyMotifs, progression, root, scale, (seed >> 5) % responseMelodyMotifs.length, {
       rotate: signature.melodyRotate + 2,
       degreeShift: signature.melodyDegreeShift - 1,
       octaveShift: Math.max(0, signature.melodyOctaveBias),
     }),
   };
   const bassLayers = {
-    base: buildNotePattern(profile.bassMotifs, progression, root, scale, (seed >> 2) % profile.bassMotifs.length, {
+    base: buildNotePattern(baseBassMotifs, progression, root, scale, (seed >> 2) % baseBassMotifs.length, {
       rotate: signature.bassRotate,
       degreeShift: signature.bassDegreeShift,
     }),
-    drive: buildNotePattern(profile.bassMotifs, progression, root, scale, (seed >> 6) % profile.bassMotifs.length, {
+    drive: buildNotePattern(driveBassMotifs, progression, root, scale, (seed >> 6) % driveBassMotifs.length, {
       rotate: signature.bassRotate + 4,
       degreeShift: signature.bassDegreeShift + 1,
     }),
   };
   const arpLayers = {
-    base: buildArpPattern(profile.arpMotifs, progression, root, scale, (seed >> 4) % profile.arpMotifs.length, {
+    base: buildArpPattern(baseArpMotifs, progression, root, scale, (seed >> 4) % baseArpMotifs.length, {
       rotate: signature.arpRotate,
       degreeShift: signature.arpDegreeShift,
       octaveShift: signature.arpOctaveBias,
     }),
-    spark: buildArpPattern(profile.arpMotifs, progression, root, scale, (seed >> 7) % profile.arpMotifs.length, {
+    spark: buildArpPattern(sparkArpMotifs, progression, root, scale, (seed >> 7) % sparkArpMotifs.length, {
       rotate: signature.arpRotate + 6,
       degreeShift: signature.arpDegreeShift + 1,
       octaveShift: signature.arpOctaveBias + 1,
     }),
-    air: buildArpPattern(profile.arpMotifs, progression, root, scale, (seed >> 9) % profile.arpMotifs.length, {
+    air: buildArpPattern(airArpMotifs, progression, root, scale, (seed >> 9) % airArpMotifs.length, {
       rotate: signature.arpRotate + 2,
       degreeShift: signature.arpDegreeShift,
       octaveShift: signature.arpOctaveBias + 1,
